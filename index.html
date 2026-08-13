@@ -1,2 +1,1244 @@
 npm init -y
 npm install express multer qrcode
+const express = require("express");
+const multer = require("multer");
+const QRCode = require("qrcode");
+const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+/* =========================
+   كلمات المرور
+========================= */
+
+const APP_PASSWORD = "9119";
+const IMAGE_PASSWORD = "9000";
+
+/* =========================
+   الملفات
+========================= */
+
+const DATA_DIR = path.join(__dirname, "vault-data");
+const UPLOAD_DIR = path.join(DATA_DIR, "uploads");
+const DB_FILE = path.join(DATA_DIR, "database.json");
+
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(
+        DB_FILE,
+        JSON.stringify({
+            images: [],
+            devices: []
+        }, null, 2)
+    );
+}
+
+/* =========================
+   قاعدة البيانات
+========================= */
+
+function readDB() {
+    return JSON.parse(
+        fs.readFileSync(DB_FILE, "utf8")
+    );
+}
+
+function writeDB(data) {
+    fs.writeFileSync(
+        DB_FILE,
+        JSON.stringify(data, null, 2)
+    );
+}
+
+/* =========================
+   جلسات الدخول
+========================= */
+
+const sessions = new Map();
+
+function createID() {
+    return crypto
+        .randomBytes(16)
+        .toString("hex");
+}
+
+function getSession(req) {
+
+    const auth =
+        req.headers.authorization || "";
+
+    if (!auth.startsWith("Bearer ")) {
+        return null;
+    }
+
+    const token =
+        auth.replace("Bearer ", "");
+
+    return sessions.get(token) || null;
+}
+
+/* =========================
+   Express
+========================= */
+
+app.use(
+    express.json({
+        limit: "10mb"
+    })
+);
+
+app.use(
+    express.urlencoded({
+        extended: true
+    })
+);
+
+/* =========================
+   رفع الصور
+   يسمح بصور كبيرة وصغيرة
+========================= */
+
+const upload = multer({
+
+    storage: multer.diskStorage({
+
+        destination: function(req, file, cb) {
+            cb(null, UPLOAD_DIR);
+        },
+
+        filename: function(req, file, cb) {
+
+            const extension =
+                path.extname(
+                    file.originalname
+                ) || ".jpg";
+
+            const filename =
+                createID() +
+                extension;
+
+            cb(null, filename);
+        }
+    }),
+
+    /*
+      الحد هنا 1GB.
+      يمكن رفع صور كبيرة وصغيرة.
+    */
+
+    limits: {
+        fileSize:
+            1024 * 1024 * 1024
+    },
+
+    fileFilter:
+        function(req, file, cb) {
+
+            if (
+                file.mimetype &&
+                file.mimetype.startsWith("image/")
+            ) {
+                cb(null, true);
+            } else {
+                cb(
+                    new Error(
+                        "يسمح برفع الصور فقط"
+                    )
+                );
+            }
+        }
+});
+
+/* =========================
+   تسجيل الدخول
+========================= */
+
+app.post(
+    "/api/login",
+    function(req, res) {
+
+        const password =
+            String(
+                req.body.password || ""
+            );
+
+        if (password !== APP_PASSWORD) {
+
+            return res
+                .status(401)
+                .json({
+                    ok: false,
+                    message:
+                        "كلمة المرور غير صحيحة"
+                });
+        }
+
+        const deviceID =
+            String(
+                req.body.deviceID ||
+                createID()
+            );
+
+        const deviceName =
+            String(
+                req.body.deviceName ||
+                "جهاز غير معروف"
+            );
+
+        const db =
+            readDB();
+
+        let device =
+            db.devices.find(
+                function(x) {
+                    return x.id === deviceID;
+                }
+            );
+
+        if (!device) {
+
+            device = {
+
+                id: deviceID,
+
+                name: deviceName,
+
+                userAgent:
+                    String(
+                        req.body.userAgent ||
+                        ""
+                    ).substring(0, 200),
+
+                firstSeen:
+                    new Date().toISOString(),
+
+                lastSeen:
+                    new Date().toISOString(),
+
+                blocked: false
+            };
+
+            db.devices.push(device);
+
+        } else {
+
+            device.lastSeen =
+                new Date().toISOString();
+        }
+
+        if (device.blocked) {
+
+            writeDB(db);
+
+            return res
+                .status(403)
+                .json({
+                    ok: false,
+                    message:
+                        "هذا الجهاز محظور من التطبيق"
+                });
+        }
+
+        writeDB(db);
+
+        const token =
+            createID();
+
+        sessions.set(
+            token,
+            {
+                deviceID,
+                created:
+                    Date.now()
+            }
+        );
+
+        res.json({
+            ok: true,
+            token,
+            deviceID
+        });
+    }
+);
+
+/* =========================
+   تسجيل الخروج
+========================= */
+
+app.post(
+    "/api/logout",
+    function(req, res) {
+
+        const auth =
+            req.headers.authorization || "";
+
+        if (auth.startsWith("Bearer ")) {
+
+            const token =
+                auth.replace(
+                    "Bearer ",
+                    ""
+                );
+
+            sessions.delete(token);
+        }
+
+        res.json({
+            ok: true
+        });
+    }
+);
+
+/* =========================
+   رفع صورة وإنشاء QR
+========================= */
+
+app.post(
+    "/api/upload",
+    upload.single("image"),
+    async function(req, res) {
+
+        try {
+
+            const session =
+                getSession(req);
+
+            if (!session) {
+
+                return res
+                    .status(401)
+                    .json({
+                        message:
+                            "يجب تسجيل الدخول"
+                    });
+            }
+
+            if (!req.file) {
+
+                return res
+                    .status(400)
+                    .json({
+                        message:
+                            "لم يتم اختيار صورة"
+                    });
+            }
+
+            const db =
+                readDB();
+
+            const imageID =
+                createID();
+
+            const item = {
+
+                id: imageID,
+
+                filename:
+                    req.file.filename,
+
+                originalName:
+                    req.file.originalname,
+
+                mime:
+                    req.file.mimetype,
+
+                size:
+                    req.file.size,
+
+                createdAt:
+                    new Date().toISOString(),
+
+                active: true,
+
+                deviceID:
+                    session.deviceID
+            };
+
+            db.images.push(item);
+
+            writeDB(db);
+
+            const host =
+                process.env.PUBLIC_URL ||
+                (
+                    req.protocol +
+                    "://" +
+                    req.get("host")
+                );
+
+            /*
+              مهم:
+              الـQR لا يحتوي الصورة نفسها.
+              يحتوي رابطاً للصورة.
+              لذلك يمكن رفع صور كبيرة.
+            */
+
+            const url =
+                host +
+                "/v/" +
+                imageID;
+
+            const qr =
+                await QRCode.toDataURL(
+                    url,
+                    {
+                        width: 800,
+                        margin: 2,
+                        errorCorrectionLevel:
+                            "M"
+                    }
+                );
+
+            res.json({
+
+                ok: true,
+
+                id: imageID,
+
+                url: url,
+
+                qr: qr,
+
+                image: item
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            res
+                .status(500)
+                .json({
+                    message:
+                        "حدث خطأ أثناء رفع الصورة"
+                });
+        }
+    }
+);
+
+/* =========================
+   محفظة الباركود
+========================= */
+
+app.get(
+    "/api/vault",
+    function(req, res) {
+
+        const session =
+            getSession(req);
+
+        if (!session) {
+
+            return res
+                .status(401)
+                .json({
+                    message:
+                        "يجب تسجيل الدخول"
+                });
+        }
+
+        const db =
+            readDB();
+
+        const list =
+            db.images.filter(
+                function(x) {
+
+                    return (
+                        x.deviceID ===
+                        session.deviceID
+                    );
+                }
+            );
+
+        res.json(list);
+    }
+);
+
+/* =========================
+   حذف نهائي للباركود
+========================= */
+
+app.delete(
+    "/api/vault/:id",
+    function(req, res) {
+
+        const session =
+            getSession(req);
+
+        if (!session) {
+
+            return res
+                .status(401)
+                .json({
+                    message:
+                        "يجب تسجيل الدخول"
+                });
+        }
+
+        const db =
+            readDB();
+
+        const index =
+            db.images.findIndex(
+                function(x) {
+
+                    return (
+                        x.id ===
+                            req.params.id &&
+                        x.deviceID ===
+                            session.deviceID
+                    );
+                }
+            );
+
+        if (index === -1) {
+
+            return res
+                .status(404)
+                .json({
+                    message:
+                        "الباركود غير موجود"
+                });
+        }
+
+        const image =
+            db.images[index];
+
+        /*
+          حذف الصورة من التخزين
+        */
+
+        const imagePath =
+            path.join(
+                UPLOAD_DIR,
+                image.filename
+            );
+
+        try {
+
+            if (
+                fs.existsSync(
+                    imagePath
+                )
+            ) {
+
+                fs.unlinkSync(
+                    imagePath
+                );
+            }
+
+        } catch {}
+
+        /*
+          حذف السجل.
+          وبالتالي QR القديم يصبح
+          غير صالح.
+        */
+
+        db.images.splice(
+            index,
+            1
+        );
+
+        writeDB(db);
+
+        res.json({
+            ok: true,
+            message:
+                "تم حذف الباركود والصورة نهائياً"
+        });
+    }
+);
+
+/* =========================
+   فتح QR
+========================= */
+
+app.post(
+    "/api/open/:id",
+    function(req, res) {
+
+        const db =
+            readDB();
+
+        const image =
+            db.images.find(
+                function(x) {
+
+                    return (
+                        x.id ===
+                        req.params.id
+                    );
+                }
+            );
+
+        if (
+            !image ||
+            !image.active
+        ) {
+
+            return res
+                .status(404)
+                .json({
+                    message:
+                        "هذا الباركود محذوف أو معطل"
+                });
+        }
+
+        const password =
+            String(
+                req.body.password || ""
+            );
+
+        if (
+            password !==
+            IMAGE_PASSWORD
+        ) {
+
+            return res
+                .status(401)
+                .json({
+                    message:
+                        "كلمة المرور غير صحيحة"
+                });
+        }
+
+        const host =
+            process.env.PUBLIC_URL ||
+            (
+                req.protocol +
+                "://" +
+                req.get("host")
+            );
+
+        res.json({
+
+            ok: true,
+
+            url:
+                host +
+                "/media/" +
+                image.filename
+        });
+    }
+);
+
+/* =========================
+   الصور
+========================= */
+
+app.get(
+    "/media/:filename",
+    function(req, res) {
+
+        const filename =
+            path.basename(
+                req.params.filename
+            );
+
+        const file =
+            path.join(
+                UPLOAD_DIR,
+                filename
+            );
+
+        if (
+            !fs.existsSync(file)
+        ) {
+
+            return res
+                .status(404)
+                .end();
+        }
+
+        res.sendFile(file);
+    }
+);
+
+/* =========================
+   الأجهزة
+========================= */
+
+app.get(
+    "/api/devices",
+    function(req, res) {
+
+        const session =
+            getSession(req);
+
+        if (!session) {
+
+            return res
+                .status(401)
+                .json({
+                    message:
+                        "غير مصرح"
+                });
+        }
+
+        const db =
+            readDB();
+
+        res.json(
+            db.devices
+        );
+    }
+);
+
+/* =========================
+   حظر / إلغاء حظر
+========================= */
+
+app.post(
+    "/api/devices/:id/block",
+    function(req, res) {
+
+        const session =
+            getSession(req);
+
+        if (!session) {
+
+            return res
+                .status(401)
+                .json({
+                    message:
+                        "غير مصرح"
+                });
+        }
+
+        const db =
+            readDB();
+
+        const device =
+            db.devices.find(
+                function(x) {
+
+                    return (
+                        x.id ===
+                        req.params.id
+                    );
+                }
+            );
+
+        if (!device) {
+
+            return res
+                .status(404)
+                .json({
+                    message:
+                        "الجهاز غير موجود"
+                });
+        }
+
+        device.blocked =
+            !device.blocked;
+
+        /*
+          إذا تم حظره:
+          يتم إخراجه فوراً من الجلسات.
+        */
+
+        if (device.blocked) {
+
+            for (
+                const [
+                    token,
+                    currentSession
+                ]
+                of sessions
+            ) {
+
+                if (
+                    currentSession.deviceID ===
+                    device.id
+                ) {
+
+                    sessions.delete(
+                        token
+                    );
+                }
+            }
+        }
+
+        writeDB(db);
+
+        res.json({
+
+            ok: true,
+
+            blocked:
+                device.blocked
+        });
+    }
+);
+
+/* =========================
+   صفحة فتح الباركود
+========================= */
+
+app.get(
+    "/v/:id",
+    function(req, res) {
+
+        res.send(
+            QR_VIEW_PAGE
+        );
+    }
+);
+
+/* =========================
+   الواجهة الرئيسية
+========================= */
+
+app.get(
+    "/",
+    function(req, res) {
+
+        res.send(
+            MAIN_PAGE
+        );
+    }
+);
+
+/* =========================
+   صفحة التطبيق
+========================= */
+
+const MAIN_PAGE = `
+<!DOCTYPE html>
+
+<html lang="ar" dir="rtl">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta
+name="viewport"
+content="width=device-width, initial-scale=1.0"
+>
+
+<title>محفظتي</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+<style>
+
+*{
+    box-sizing:border-box;
+    font-family:Arial,sans-serif;
+}
+
+body{
+    margin:0;
+    background:#f3f6fb;
+    color:#172033;
+}
+
+.hidden{
+    display:none!important;
+}
+
+button{
+    border:0;
+    cursor:pointer;
+    font-family:inherit;
+}
+
+.login{
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    padding:20px;
+    background:
+    linear-gradient(
+        135deg,
+        #075bd6,
+        #062b68
+    );
+}
+
+.login-box{
+    width:100%;
+    max-width:400px;
+    background:white;
+    padding:30px;
+    border-radius:25px;
+    text-align:center;
+    box-shadow:
+    0 20px 60px #0005;
+}
+
+.logo{
+    font-size:50px;
+}
+
+.password{
+    width:100%;
+    height:58px;
+    border:2px solid #e1e5ed;
+    border-radius:15px;
+    text-align:center;
+    font-size:25px;
+    letter-spacing:8px;
+}
+
+.primary{
+    background:#087cff;
+    color:white;
+    padding:14px 22px;
+    border-radius:14px;
+    font-weight:bold;
+}
+
+.primary-big{
+    width:100%;
+    min-height:110px;
+    background:#087cff;
+    color:white;
+    border-radius:22px;
+    font-size:22px;
+    font-weight:bold;
+}
+
+.danger{
+    background:#ffe5e5;
+    color:#c62828;
+    padding:12px 18px;
+    border-radius:12px;
+}
+
+.secondary{
+    background:#edf0f5;
+    color:#333;
+    padding:12px 18px;
+    border-radius:12px;
+}
+
+.error{
+    color:#d32f2f;
+    min-height:25px;
+    margin-top:10px;
+}
+
+header{
+    background:white;
+    height:70px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 20px;
+    box-shadow:
+    0 2px 12px #0001;
+    position:sticky;
+    top:0;
+    z-index:5;
+}
+
+header h2{
+    color:#075ed6;
+}
+
+.container{
+    max-width:1000px;
+    margin:auto;
+    padding:20px 16px 100px;
+}
+
+.page{
+    display:none;
+}
+
+.page.active{
+    display:block;
+}
+
+.hero{
+    background:
+    linear-gradient(
+        135deg,
+        #064bb9,
+        #03245c
+    );
+    color:white;
+    padding:30px;
+    border-radius:28px;
+    margin-bottom:20px;
+}
+
+.hero h1{
+    margin-top:0;
+    font-size:32px;
+}
+
+.card{
+    background:white;
+    padding:22px;
+    border-radius:22px;
+    margin-bottom:16px;
+    box-shadow:
+    0 5px 20px #0000000d;
+}
+
+#qrcode{
+    display:flex;
+    justify-content:center;
+    padding:15px;
+}
+
+.item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    background:white;
+    padding:12px;
+    border-radius:18px;
+    margin-bottom:10px;
+}
+
+.thumb{
+    width:70px;
+    height:70px;
+    object-fit:cover;
+    border-radius:12px;
+}
+
+.grow{
+    flex:1;
+}
+
+nav{
+    position:fixed;
+    bottom:0;
+    left:0;
+    right:0;
+    background:white;
+    display:flex;
+    justify-content:center;
+    gap:6px;
+    padding:10px;
+    box-shadow:
+    0 -3px 15px #0001;
+    z-index:6;
+}
+
+nav button{
+    background:white;
+    color:#555;
+    padding:10px 14px;
+    border-radius:12px;
+}
+
+.device{
+    border:1px solid #e1e5ed;
+    padding:15px;
+    border-radius:16px;
+    margin-bottom:10px;
+}
+
+@media(max-width:600px){
+
+    .hero h1{
+        font-size:25px;
+    }
+
+    .item{
+        flex-wrap:wrap;
+    }
+}
+
+</style>
+
+</head>
+
+<body>
+
+<!-- LOGIN -->
+
+<section
+id="loginPage"
+class="login"
+>
+
+<div class="login-box">
+
+<div class="logo">
+🔐
+</div>
+
+<h1>
+محفظتي
+</h1>
+
+<p>
+أدخل كلمة المرور للدخول
+</p>
+
+<input
+id="loginPassword"
+class="password"
+type="password"
+inputmode="numeric"
+maxlength="4"
+placeholder="••••"
+>
+
+<br>
+<br>
+
+<button
+class="primary"
+style="width:100%"
+onclick="login()"
+>
+دخول
+</button>
+
+<div
+id="loginError"
+class="error"
+></div>
+
+</div>
+
+</section>
+
+
+<!-- APP -->
+
+<section
+id="app"
+class="hidden"
+>
+
+<header>
+
+<h2>
+📦 محفظتي
+</h2>
+
+<button
+class="danger"
+onclick="logout()"
+>
+خروج
+</button>
+
+</header>
+
+
+<div class="container">
+
+
+<!-- الرئيسية -->
+
+<section
+id="home"
+class="page active"
+>
+
+<div class="hero">
+
+<h1>
+تحويل الصور إلى باركود
+</h1>
+
+<p>
+ارفع صورة كبيرة أو صغيرة،
+وسيتم إنشاء QR حقيقي يحتوي
+على رابط آمن للصورة.
+</p>
+
+</div>
+
+
+<div class="card">
+
+<button
+class="primary-big"
+onclick="
+document
+.getElementById('imageInput')
+.click()
+"
+>
+📷 اختر صورة من محفظتي
+</button>
+
+<input
+id="imageInput"
+type="file"
+accept="image/*"
+hidden
+onchange="uploadImage()"
+>
+
+</div>
+
+</section>
+
+
+<!-- إنشاء QR -->
+
+<section
+id="qrPage"
+class="page"
+>
+
+<div class="card">
+
+<h2>
+🔳 الباركود
+</h2>
+
+<div id="qrcode">
+</div>
+
+<p
+id="qrUrl"
+style="
+word-break:break-all;
+color:#777;
+"
+></p>
+
+<button
+class="primary"
+onclick="downloadQR()"
+>
+💾 حفظ الباركود
+</button>
+
+<button
+class="secondary"
+onclick="showPage('home')"
+>
+رجوع
+</button>
+
+</div>
+
+</section>
+
+
+<!-- المحفظة -->
+
+<section
+id="vaultPage"
+class="page"
+>
+
+<h2>
+🗂️ محفظة حفظ الباركود
+</h2>
+
+<div id="vaultList">
+</div>
+
+</s
