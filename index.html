@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>محفظتي</title>
+<title>محفظتي - باركود الصور</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
@@ -146,8 +146,8 @@ placeholder="••••">
 <div id="home" class="page active">
 
 <div class="hero">
-<h1>تحويل الصور إلى باركود</h1>
-<p>ارفع صورة كبيرة أو صغيرة وسيتم تجهيزها للباركود.</p>
+<h1>📸 تحويل الصور إلى باركود بسهولة</h1>
+<p>ارفع أي صورة وسنقوم بتحويلها إلى باركود قابل للمسح، حتى الصور الكبيرة.</p>
 </div>
 
 <div class="card">
@@ -170,18 +170,18 @@ onchange="makeQR(event)">
 
 <div class="card">
 
-<h2>🔳 الباركود</h2>
+<h2>🔳 الباركود الناتج</h2>
 
 <img id="preview">
 
 <div id="qrcode"></div>
 
 <button class="btn blue" onclick="downloadQR()">
-💾 حفظ الباركود
+💾 حفظ الباركود كصورة
 </button>
 
 <button class="btn gray" onclick="show('home')">
-رجوع
+العودة
 </button>
 
 </div>
@@ -189,7 +189,7 @@ onchange="makeQR(event)">
 
 <div id="vault" class="page">
 
-<h2>🗂️ محفظة حفظ الباركود</h2>
+<h2>🗂️ الباركودات المحفوظة</h2>
 
 <div id="vaultList"></div>
 
@@ -197,11 +197,11 @@ onchange="makeQR(event)">
 
 <div id="devices" class="page">
 
-<h2>📱 الأجهزة</h2>
+<h2>📱 الأجهزة المتصلة</h2>
 
 <div class="card">
-<p>صفحة الأجهزة الخاصة بصاحب التطبيق.</p>
-<p>الجهاز الحالي: <span id="deviceID"></span></p>
+<p>معلومات الجهاز الحالي:</p>
+<p><span id="deviceID"></span></p>
 </div>
 
 </div>
@@ -274,7 +274,7 @@ if(!file)return;
 
 if(!file.type.startsWith("image/")){
 
-alert("يرجى اختيار صورة فقط");
+alert("يرجى اختيار صورة صالحة فقط");
 return;
 
 }
@@ -350,6 +350,9 @@ correctLevel:QRCode.CorrectLevel.M
 );
 
 saveData(id,currentImage,currentQR);
+
+// رسالة نجاح
+alert("✅ تم تحويل الصورة إلى باركود بنجاح!");
 
 show("qr");
 
@@ -454,7 +457,7 @@ const item=list.find(x=>x.id===id);
 
 if(!item||!item.active){
 
-alert("هذا الباركود محذوف أو معطل");
+alert("هذا الباركود محذوف أو غير نشط");
 return;
 
 }
@@ -483,7 +486,7 @@ show("qr");
 function deleteQR(id){
 
 if(!confirm(
-"هل تريد حذف الباركود نهائياً؟"
+"هل أنت متأكد من حذف هذا الباركود نهائياً؟"
 ))return;
 
 let list=
@@ -510,7 +513,7 @@ const qr=document
 
 if(!qr){
 
-alert("لا يوجد باركود");
+alert("لا يوجد باركود للحفظ");
 return;
 
 }
