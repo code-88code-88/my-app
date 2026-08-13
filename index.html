@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <style>
+
 *{
   box-sizing:border-box;
   margin:0;
@@ -22,43 +23,62 @@ body{
   color:white;
 }
 
-/* =========================
-   شاشة الدخول
-========================= */
+/* =================================
+   شاشة تسجيل الدخول
+================================= */
 
 #loginScreen{
   position:fixed;
   inset:0;
-  background:linear-gradient(145deg,#08080c,#171722);
-  display:flex;
-  justify-content:center;
-  align-items:center;
   z-index:9999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #08080c,
+      #171722
+    );
 }
 
 .login-box{
-  width:min(90%,360px);
+  width:min(92%,360px);
+
   padding:30px 25px;
+
   border-radius:25px;
+
   background:rgba(255,255,255,.07);
+
   border:1px solid rgba(255,255,255,.12);
-  box-shadow:0 20px 60px rgba(0,0,0,.5);
+
+  box-shadow:
+    0 20px 60px rgba(0,0,0,.55);
+
   text-align:center;
+
   backdrop-filter:blur(15px);
 }
 
 .logo{
   width:70px;
   height:70px;
-  margin:auto auto 18px;
+
+  margin:0 auto 18px;
+
   border-radius:20px;
+
   display:flex;
   align-items:center;
   justify-content:center;
+
   background:white;
   color:#111;
-  font-size:28px;
-  font-weight:bold;
+
+  font-size:30px;
 }
 
 .login-box h1{
@@ -72,77 +92,127 @@ body{
   margin-bottom:25px;
 }
 
+
+/* =================================
+   خانات الرقم
+================================= */
+
 .pin{
   display:flex;
+
   justify-content:center;
+
   direction:ltr;
+
   gap:10px;
-  margin-bottom:22px;
+
+  margin-bottom:18px;
 }
 
 .pin span{
   width:48px;
   height:58px;
+
   border-radius:14px;
+
   border:1px solid #444;
+
   background:#111118;
+
   display:flex;
   align-items:center;
   justify-content:center;
+
   font-size:25px;
   font-weight:bold;
+
+  transition:.2s;
 }
 
 .pin span.active{
   border-color:#4da3ff;
-  box-shadow:0 0 15px rgba(77,163,255,.25);
+
+  box-shadow:
+    0 0 15px
+    rgba(77,163,255,.25);
 }
 
 .error{
-  height:20px;
+  min-height:20px;
+
   color:#ff5c5c;
+
   font-size:13px;
+
   margin-bottom:8px;
 }
 
+
+/* =================================
+   لوحة الأرقام
+================================= */
+
 .keypad{
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+
+  grid-template-columns:
+    repeat(3,1fr);
+
   gap:10px;
 }
 
 .keypad button{
-  height:55px;
+  height:58px;
+
   border:0;
+
   border-radius:15px;
+
   background:#20202a;
+
   color:white;
+
   font-size:20px;
+
   cursor:pointer;
+
   transition:.15s;
 }
 
 .keypad button:active{
   transform:scale(.93);
+
   background:#33333f;
 }
 
-/* =========================
+
+/* =================================
    التطبيق
-========================= */
+================================= */
 
 #app{
   display:none;
+
   min-height:100vh;
+
   padding:20px;
+
   background:
-    radial-gradient(circle at 50% 0%,#101b2d 0%,#090909 40%,#000 100%);
+    radial-gradient(
+      circle at 50% 0%,
+      #101b2d 0%,
+      #090909 40%,
+      #000 100%
+    );
 }
 
 .app-header{
   padding:20px;
+
   border-radius:22px;
+
   background:#15151d;
+
   margin-bottom:18px;
 }
 
@@ -154,24 +224,35 @@ body{
   color:#aaa;
 }
 
-/* =========================
-   التنقل
-========================= */
+
+/* =================================
+   التبويبات
+================================= */
 
 .tabs{
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+
+  grid-template-columns:
+    repeat(3,1fr);
+
   gap:8px;
+
   margin-bottom:18px;
 }
 
 .tab{
   border:0;
+
   border-radius:15px;
+
   padding:14px 5px;
+
   background:#171820;
+
   color:#aaa;
+
   cursor:pointer;
+
   font-size:13px;
 }
 
@@ -180,9 +261,10 @@ body{
   color:white;
 }
 
-/* =========================
+
+/* =================================
    الصفحات
-========================= */
+================================= */
 
 .page{
   display:none;
@@ -192,15 +274,20 @@ body{
   display:block;
 }
 
-/* =========================
-   تحويل الصور
-========================= */
+
+/* =================================
+   البطاقات
+================================= */
 
 .main-card{
   background:#15151d;
+
   border-radius:22px;
+
   padding:22px;
+
   margin-bottom:15px;
+
   text-align:center;
 }
 
@@ -210,21 +297,46 @@ body{
 
 .main-card p{
   color:#aaa;
+
   line-height:1.7;
+
   margin-bottom:18px;
 }
 
+
+/* =================================
+   زر الصور الأزرق
+================================= */
+
 .blue-button{
   width:100%;
+
   min-height:80px;
+
   border:0;
+
   border-radius:20px;
+
   background:#147df5;
+
   color:white;
+
   font-size:19px;
+
   font-weight:bold;
+
   cursor:pointer;
-  box-shadow:0 10px 30px rgba(20,125,245,.25);
+
+  display:flex;
+
+  align-items:center;
+
+  justify-content:center;
+
+  box-shadow:
+    0 10px 30px
+    rgba(20,125,245,.25);
+
   transition:.2s;
 }
 
@@ -236,127 +348,231 @@ input[type=file]{
   display:none;
 }
 
-/* =========================
+
+/* =================================
    معاينة الصورة
-========================= */
+================================= */
 
 #preview{
   width:100%;
+
   max-height:350px;
+
   object-fit:contain;
+
   border-radius:18px;
+
   margin-top:18px;
+
   display:none;
+
   background:#080808;
 }
 
-/* =========================
+
+/* =================================
    QR
-========================= */
+================================= */
 
 #qrBox{
   margin:20px auto;
-  padding:20px;
+
+  padding:14px;
+
   width:max-content;
+
   max-width:100%;
+
   background:white;
+
   border-radius:18px;
+
   display:none;
 }
 
-#qrBox img,
-#qrBox canvas{
+#qrBox canvas,
+#qrBox img{
+  display:block;
+
   max-width:100%;
+
   height:auto;
 }
 
 .qr-info{
   color:#aaa;
+
   font-size:13px;
+
   line-height:1.7;
+
   margin:12px 0;
 }
 
 .action-button{
   width:100%;
+
   padding:14px;
+
   border:0;
+
   border-radius:14px;
-  background:#252633;
+
+  background:#292934;
+
   color:white;
+
   cursor:pointer;
+
   margin-top:8px;
 }
 
-/* =========================
-   المحافظ
-========================= */
+
+/* =================================
+   حقول الإدخال
+================================= */
+
+#openCode{
+  width:100%;
+
+  padding:15px;
+
+  border-radius:15px;
+
+  border:1px solid #333;
+
+  background:#0d0d12;
+
+  color:white;
+
+  margin:12px 0;
+
+  outline:none;
+
+  font-size:15px;
+}
+
+.password-input{
+  width:100%;
+
+  padding:15px;
+
+  border-radius:15px;
+
+  border:1px solid #333;
+
+  background:#0d0d12;
+
+  color:white;
+
+  text-align:center;
+
+  font-size:20px;
+
+  letter-spacing:5px;
+
+  outline:none;
+}
+
+
+/* =================================
+   المحفظة
+================================= */
 
 .item{
   background:#15151d;
+
   border-radius:20px;
+
   padding:18px;
+
   margin-bottom:12px;
 }
 
 .item-title{
   font-weight:bold;
+
   margin-bottom:7px;
 }
 
 .item-info{
   color:#999;
+
   font-size:13px;
+
   line-height:1.7;
 }
 
 .item img{
   width:100%;
+
   max-height:220px;
+
   object-fit:contain;
+
   border-radius:15px;
+
   margin-top:12px;
+
   background:#080808;
 }
 
-/* =========================
+
+/* =================================
    الأجهزة
-========================= */
+================================= */
 
 .device{
   background:#15151d;
+
   border-radius:20px;
+
   padding:18px;
+
   margin-bottom:12px;
 }
 
 .device-row{
   display:flex;
+
   justify-content:space-between;
+
   gap:10px;
+
   align-items:center;
 }
 
 .status{
   padding:5px 9px;
+
   border-radius:10px;
+
   background:#173b24;
+
   color:#62e58b;
+
   font-size:12px;
 }
 
 .status.blocked{
   background:#421b1b;
+
   color:#ff6b6b;
 }
 
 .device button{
   margin-top:10px;
+
   border:0;
+
   border-radius:12px;
+
   padding:10px 14px;
+
   color:white;
+
   cursor:pointer;
+
   background:#292934;
 }
 
@@ -368,203 +584,372 @@ input[type=file]{
   background:#238b57;
 }
 
-/* =========================
-   فتح QR
-========================= */
 
-#openCode{
-  width:100%;
-  padding:15px;
-  border-radius:15px;
-  border:1px solid #333;
-  background:#0d0d12;
-  color:white;
-  margin:12px 0;
-  outline:none;
-}
-
-.password-input{
-  width:100%;
-  padding:15px;
-  border-radius:15px;
-  border:1px solid #333;
-  background:#0d0d12;
-  color:white;
-  text-align:center;
-  font-size:20px;
-  letter-spacing:5px;
-}
-
-/* =========================
-   نافذة فتح الصورة
-========================= */
+/* =================================
+   النافذة
+================================= */
 
 .modal{
   position:fixed;
+
   inset:0;
-  background:rgba(0,0,0,.85);
+
+  background:
+    rgba(0,0,0,.88);
+
   z-index:8000;
+
   display:none;
+
   align-items:center;
+
   justify-content:center;
+
   padding:20px;
 }
 
 .modal-box{
   width:min(95%,500px);
+
+  max-height:92vh;
+
+  overflow:auto;
+
   background:#15151d;
+
   border-radius:24px;
+
   padding:22px;
+
   text-align:center;
 }
 
 .modal-box img{
   width:100%;
+
   max-height:70vh;
+
   object-fit:contain;
+
   border-radius:15px;
+
   margin-top:15px;
 }
 
 .close{
+  width:100%;
+
+  padding:12px;
+
+  margin-top:12px;
+
   border:0;
-  border-radius:12px;
+
+  border-radius:14px;
+
   background:#292934;
+
   color:white;
-  padding:11px 20px;
-  margin-top:15px;
+
   cursor:pointer;
 }
 
-/* =========================
+
+/* =================================
    النار
-========================= */
+================================= */
 
 #fire{
   position:fixed;
+
   inset:0;
+
   background:#000;
+
   z-index:12000;
+
   display:none;
+
   align-items:flex-end;
+
   justify-content:center;
+
   overflow:hidden;
 }
 
 .fire-title{
   position:absolute;
+
   top:35%;
+
   width:100%;
+
   text-align:center;
+
   font-size:35px;
+
   font-weight:bold;
+
   text-shadow:
     0 0 10px white,
     0 0 25px orange,
     0 0 45px red;
-  animation:fireTitle 2.5s forwards;
+
+  animation:
+    fireTitle 2.5s forwards;
 }
 
 .flames{
   display:flex;
+
   align-items:flex-end;
+
   gap:8px;
+
   height:55%;
 }
 
 .flame{
   width:45px;
+
   height:160px;
-  border-radius:50% 50% 35% 35%;
+
+  border-radius:
+    50% 50% 35% 35%;
+
   background:
-  radial-gradient(
-    ellipse at 50% 75%,
-    white 0%,
-    #ffe600 15%,
-    #ff9d00 35%,
-    #ff4500 62%,
-    transparent 75%
-  );
+    radial-gradient(
+      ellipse at 50% 75%,
+      #fff 0%,
+      #ffe600 15%,
+      #ff9d00 35%,
+      #ff4500 62%,
+      transparent 75%
+    );
+
   transform-origin:bottom;
-  animation:flame .45s infinite alternate ease-in-out;
+
+  animation:
+    flame .45s
+    infinite alternate
+    ease-in-out;
 }
 
-.flame:nth-child(2){height:230px;animation-delay:.1s}
-.flame:nth-child(3){height:290px;animation-delay:.2s}
-.flame:nth-child(4){height:210px;animation-delay:.08s}
-.flame:nth-child(5){height:250px;animation-delay:.18s}
-.flame:nth-child(6){height:180px;animation-delay:.3s}
+.flame:nth-child(2){
+  height:230px;
+  animation-delay:.1s;
+}
+
+.flame:nth-child(3){
+  height:290px;
+  animation-delay:.2s;
+}
+
+.flame:nth-child(4){
+  height:210px;
+  animation-delay:.08s;
+}
+
+.flame:nth-child(5){
+  height:250px;
+  animation-delay:.18s;
+}
+
+.flame:nth-child(6){
+  height:180px;
+  animation-delay:.3s;
+}
 
 @keyframes flame{
-  from{transform:scaleY(.85) rotate(-4deg)}
-  to{transform:scaleY(1.1) rotate(5deg)}
+
+  from{
+    transform:
+      scaleY(.85)
+      rotate(-4deg);
+  }
+
+  to{
+    transform:
+      scaleY(1.1)
+      rotate(5deg);
+  }
 }
 
 @keyframes fireTitle{
-  0%{opacity:0;transform:scale(.5)}
-  30%{opacity:1;transform:scale(1.1)}
-  100%{opacity:0;transform:scale(1.3)}
+
+  0%{
+    opacity:0;
+    transform:scale(.5);
+  }
+
+  30%{
+    opacity:1;
+    transform:scale(1.1);
+  }
+
+  100%{
+    opacity:0;
+    transform:scale(1.3);
+  }
 }
 
-/* =========================
+
+/* =================================
    زر القفل
-========================= */
+================================= */
 
 .logout{
   width:100%;
+
   margin-top:18px;
+
   padding:14px;
+
   border:0;
+
   border-radius:14px;
+
   background:#292934;
+
   color:white;
+
   cursor:pointer;
 }
+
+
+@media(max-width:380px){
+
+  .login-box{
+    padding:25px 18px;
+  }
+
+  .pin span{
+    width:45px;
+  }
+
+  .keypad{
+    gap:8px;
+  }
+
+  .keypad button{
+    height:54px;
+  }
+
+}
+
 </style>
 </head>
 
 <body>
 
-<!-- =========================
-     تسجيل الدخول
-========================= -->
+
+<!-- =================================
+     شاشة الدخول
+================================= -->
 
 <div id="loginScreen">
 
   <div class="login-box">
 
-    <div class="logo">🔐</div>
+    <div class="logo">
+      🔐
+    </div>
 
-    <h1>تطبيقي</h1>
+    <h1>
+      تطبيقي
+    </h1>
 
-    <p>أدخل رمز الدخول للمتابعة</p>
+    <p>
+      أدخل رمز الدخول للمتابعة
+    </p>
 
     <div class="pin">
+
       <span id="p1"></span>
       <span id="p2"></span>
       <span id="p3"></span>
       <span id="p4"></span>
+
     </div>
 
-    <div class="error" id="error"></div>
+    <div
+      class="error"
+      id="error">
+    </div>
 
     <div class="keypad">
 
-      <button onclick="press(1)">1</button>
-      <button onclick="press(2)">2</button>
-      <button onclick="press(3)">3</button>
+      <button
+        type="button"
+        onclick="press(1)">
+        1
+      </button>
 
-      <button onclick="press(4)">4</button>
-      <button onclick="press(5)">5</button>
-      <button onclick="press(6)">6</button>
+      <button
+        type="button"
+        onclick="press(2)">
+        2
+      </button>
 
-      <button onclick="press(7)">7</button>
-      <button onclick="press(8)">8</button>
-      <button onclick="press(9)">9</button>
+      <button
+        type="button"
+        onclick="press(3)">
+        3
+      </button>
 
-      <button onclick="clearPin()">⌫</button>
-      <button onclick="press(0)">0</button>
-      <button onclick="login()">✓</button>
+      <button
+        type="button"
+        onclick="press(4)">
+        4
+      </button>
+
+      <button
+        type="button"
+        onclick="press(5)">
+        5
+      </button>
+
+      <button
+        type="button"
+        onclick="press(6)">
+        6
+      </button>
+
+      <button
+        type="button"
+        onclick="press(7)">
+        7
+      </button>
+
+      <button
+        type="button"
+        onclick="press(8)">
+        8
+      </button>
+
+      <button
+        type="button"
+        onclick="press(9)">
+        9
+      </button>
+
+      <button
+        type="button"
+        onclick="clearPin()">
+        ⌫
+      </button>
+
+      <button
+        type="button"
+        onclick="press(0)">
+        0
+      </button>
+
+      <button
+        type="button"
+        onclick="login()">
+        ✓
+      </button>
 
     </div>
 
@@ -573,9 +958,9 @@ input[type=file]{
 </div>
 
 
-<!-- =========================
+<!-- =================================
      تأثير النار
-========================= -->
+================================= -->
 
 <div id="fire">
 
@@ -584,26 +969,35 @@ input[type=file]{
   </div>
 
   <div class="flames">
+
     <div class="flame"></div>
     <div class="flame"></div>
     <div class="flame"></div>
     <div class="flame"></div>
     <div class="flame"></div>
     <div class="flame"></div>
+
   </div>
 
 </div>
 
 
-<!-- =========================
+<!-- =================================
      التطبيق
-========================= -->
+================================= -->
 
 <div id="app">
 
   <div class="app-header">
-    <h2>مرحباً بك 👋</h2>
-    <p>محفظة الصور والباركود الخاصة بك</p>
+
+    <h2>
+      مرحباً بك 👋
+    </h2>
+
+    <p>
+      محفظة الصور والباركود الخاصة بك
+    </p>
+
   </div>
 
 
@@ -611,48 +1005,68 @@ input[type=file]{
 
   <div class="tabs">
 
-    <button class="tab active" onclick="showPage('convert',this)">
+    <button
+      type="button"
+      class="tab active"
+      onclick="showPage('convert',this)">
       📷 الصور
     </button>
 
-    <button class="tab" onclick="showPage('friends',this)">
+    <button
+      type="button"
+      class="tab"
+      onclick="showPage('friends',this)">
       👥 الأصدقاء
     </button>
 
-    <button class="tab" onclick="showPage('devices',this)">
+    <button
+      type="button"
+      class="tab"
+      onclick="showPage('devices',this)">
       📱 الأجهزة
     </button>
 
   </div>
 
 
-  <!-- =========================
-       الصفحة الأولى
-  ========================= -->
+  <!-- =================================
+       صفحة الصور
+  ================================= -->
 
-  <div id="convert" class="page active">
+  <div
+    id="convert"
+    class="page active">
 
     <div class="main-card">
 
-      <h2>تحويل الصور إلى باركود</h2>
+      <h2>
+        تحويل الصور إلى باركود
+      </h2>
 
       <p>
-        اختر صورة من محفظتك لإنشاء QR حقيقي قابل للمسح.
+        اختر صورة من محفظتك لإنشاء QR حقيقي.
       </p>
 
+
       <label class="blue-button">
+
         📷 فتح محفظة الصور
+
         <input
           type="file"
           id="imageInput"
-          accept="image/*"
-          onchange="createBarcode(event)"
-        >
+          accept="image/*">
+
       </label>
 
-      <img id="preview">
+
+      <img
+        id="preview"
+        alt="معاينة الصورة">
+
 
       <div id="qrBox"></div>
+
 
       <div
         id="qrInfo"
@@ -660,34 +1074,46 @@ input[type=file]{
         style="display:none">
       </div>
 
+
       <button
         id="saveQR"
+        type="button"
         class="action-button"
         style="display:none"
         onclick="saveQR()">
+
         💾 حفظ الباركود
+
       </button>
 
     </div>
 
 
+    <!-- فتح باركود -->
+
     <div class="main-card">
 
-      <h2>🔐 فتح باركود</h2>
+      <h2>
+        🔐 فتح باركود
+      </h2>
 
       <p>
-        أدخل بيانات الباركود المحفوظة في التطبيق.
+        أدخل رمز الصورة المحفوظ.
       </p>
 
       <input
         id="openCode"
-        placeholder="أدخل رمز الصورة">
+        placeholder="أدخل رمز الصورة"
+        autocomplete="off">
 
       <button
+        type="button"
         class="blue-button"
         style="min-height:55px"
         onclick="openProtectedImage()">
+
         فتح الصورة
+
       </button>
 
     </div>
@@ -695,8 +1121,13 @@ input[type=file]{
 
     <div class="main-card">
 
-      <button class="logout" onclick="logout()">
+      <button
+        type="button"
+        class="logout"
+        onclick="logout()">
+
         🔒 قفل التطبيق
+
       </button>
 
     </div>
@@ -704,18 +1135,22 @@ input[type=file]{
   </div>
 
 
-  <!-- =========================
+  <!-- =================================
        محفظة الأصدقاء
-  ========================= -->
+  ================================= -->
 
-  <div id="friends" class="page">
+  <div
+    id="friends"
+    class="page">
 
     <div class="main-card">
 
-      <h2>👥 محفظة الأصدقاء</h2>
+      <h2>
+        👥 محفظة الأصدقاء
+      </h2>
 
       <p>
-        الباركودات والصور التي تم إنشاؤها من خلال هذا الجهاز.
+        الصور والباركودات المحفوظة في هذا الجهاز.
       </p>
 
     </div>
@@ -725,15 +1160,19 @@ input[type=file]{
   </div>
 
 
-  <!-- =========================
-       محفظة الأجهزة
-  ========================= -->
+  <!-- =================================
+       الأجهزة
+  ================================= -->
 
-  <div id="devices" class="page">
+  <div
+    id="devices"
+    class="page">
 
     <div class="main-card">
 
-      <h2>📱 الأجهزة</h2>
+      <h2>
+        📱 الأجهزة
+      </h2>
 
       <p>
         إدارة الأجهزة المسجلة في التطبيق.
@@ -748,18 +1187,25 @@ input[type=file]{
 </div>
 
 
-<!-- =========================
-     نافذة كلمة السر للصورة
-========================= -->
+<!-- =================================
+     نافذة كلمة سر الصورة
+================================= -->
 
-<div id="passwordModal" class="modal">
+<div
+  id="passwordModal"
+  class="modal">
 
   <div class="modal-box">
 
-    <h2>🔐 الصورة محمية</h2>
+    <h2>
+      🔐 الصورة محمية
+    </h2>
 
-    <p style="color:#aaa;margin-top:10px;">
+    <p
+      style="color:#aaa;margin-top:10px">
+
       أدخل كلمة السر لعرض الصورة
+
     </p>
 
     <input
@@ -767,19 +1213,28 @@ input[type=file]{
       class="password-input"
       maxlength="4"
       inputmode="numeric"
+      autocomplete="off"
       placeholder="••••">
 
+
     <button
+      type="button"
       class="blue-button"
       style="margin-top:15px;min-height:55px"
       onclick="checkImagePassword()">
+
       فتح الصورة
+
     </button>
 
+
     <button
+      type="button"
       class="close"
       onclick="closeModal()">
+
       إلغاء
+
     </button>
 
   </div>
@@ -789,20 +1244,20 @@ input[type=file]{
 
 <script>
 
-/* =====================================================
+/* =========================================
    كلمات السر
-===================================================== */
+========================================= */
 
-/* دخول التطبيق */
+/* كلمة دخول التطبيق */
 const PASSWORD = "9119";
 
 /* كلمة حماية الصور */
 const IMAGE_PASSWORD = "9000";
 
 
-/* =====================================================
-   حالة التطبيق
-===================================================== */
+/* =========================================
+   المتغيرات
+========================================= */
 
 let enteredPin = "";
 
@@ -811,471 +1266,344 @@ let currentImage = null;
 let currentImageId = null;
 
 
-/* =====================================================
-   تسجيل الدخول
-===================================================== */
+/* =========================================
+   إدخال الرقم
+========================================= */
 
 function press(number){
 
-  if(enteredPin.length >= 4) return;
+  if(enteredPin.length >= 4){
+    return;
+  }
 
-  enteredPin += number;
+  enteredPin += String(number);
 
   updatePin();
 
+
+  /*
+     بعد إدخال أربعة أرقام
+     يتم تسجيل الدخول تلقائياً
+  */
+
   if(enteredPin.length === 4){
 
-    setTimeout(login,200);
+    setTimeout(function(){
+
+      login();
+
+    },180);
 
   }
+
 }
 
+
+/* =========================================
+   تحديث خانات الرقم
+========================================= */
 
 function updatePin(){
 
   for(let i=1;i<=4;i++){
 
-    const box=document.getElementById("p"+i);
+    const box =
+      document.getElementById("p"+i);
 
-    if(enteredPin[i-1]){
 
-      box.textContent="●";
+    if(i <= enteredPin.length){
+
+      box.textContent = "●";
 
       box.classList.add("active");
 
     }else{
 
-      box.textContent="";
+      box.textContent = "";
 
       box.classList.remove("active");
 
     }
 
   }
+
 }
 
+
+/* =========================================
+   حذف الرقم
+========================================= */
 
 function clearPin(){
 
-  enteredPin=enteredPin.slice(0,-1);
+  enteredPin =
+    enteredPin.slice(0,-1);
 
-  document.getElementById("error").textContent="";
+
+  document.getElementById(
+    "error"
+  ).textContent = "";
+
 
   updatePin();
+
 }
 
 
+/* =========================================
+   تسجيل الدخول
+========================================= */
+
 function login(){
 
-  if(enteredPin.length!==4) return;
+  if(enteredPin.length !== 4){
+    return;
+  }
 
-  if(enteredPin===PASSWORD){
 
-    document.getElementById("loginScreen").style.display="none";
+  if(enteredPin === PASSWORD){
 
-    document.getElementById("app").style.display="block";
+    document.getElementById(
+      "loginScreen"
+    ).style.display = "none";
 
-    showFire();
 
-    enteredPin="";
+    document.getElementById(
+      "app"
+    ).style.display = "block";
+
+
+    enteredPin = "";
 
     updatePin();
+
 
     loadFriends();
 
     loadDevices();
 
+    showFire();
+
+
   }else{
 
-    document.getElementById("error").textContent=
+    document.getElementById(
+      "error"
+    ).textContent =
       "رمز الدخول غير صحيح";
 
-    enteredPin="";
+
+    enteredPin = "";
 
     updatePin();
 
   }
+
 }
 
 
-/* =====================================================
-   النار
-===================================================== */
+/* =========================================
+   تأثير النار
+========================================= */
 
 function showFire(){
 
-  const fire=document.getElementById("fire");
+  const fire =
+    document.getElementById("fire");
 
-  fire.style.display="flex";
 
-  setTimeout(()=>{
+  fire.style.display = "flex";
 
-    fire.style.display="none";
+
+  setTimeout(function(){
+
+    fire.style.display = "none";
 
   },2700);
 
 }
 
 
-/* =====================================================
-   التنقل بين الصفحات
-===================================================== */
+/* =========================================
+   التنقل
+========================================= */
 
 function showPage(page,button){
 
-  document.querySelectorAll(".page")
-    .forEach(p=>p.classList.remove("active"));
+  document
+    .querySelectorAll(".page")
+    .forEach(function(p){
 
-  document.getElementById(page)
+      p.classList.remove("active");
+
+    });
+
+
+  document
+    .getElementById(page)
     .classList.add("active");
 
-  document.querySelectorAll(".tab")
-    .forEach(t=>t.classList.remove("active"));
+
+  document
+    .querySelectorAll(".tab")
+    .forEach(function(t){
+
+      t.classList.remove("active");
+
+    });
+
 
   button.classList.add("active");
 
 }
 
 
-/* =====================================================
+/* =========================================
+   اختيار الصورة
+========================================= */
+
+document
+  .getElementById("imageInput")
+  .addEventListener(
+    "change",
+    createBarcode
+  );
+
+
+/* =========================================
    تحويل الصورة إلى QR
-===================================================== */
+========================================= */
 
 function createBarcode(event){
 
-  const file=event.target.files[0];
-
-  if(!file) return;
-
-
-  /*
-    ملاحظة:
-    في النسخة المحلية يتم إنشاء رمز للصورة
-    وتخزين الصورة محلياً.
-    النسخة العالمية تحتاج خادمًا.
-  */
-
-  const reader=new FileReader();
-
-  reader.onload=function(e){
-
-    currentImage=e.target.result;
-
-    currentImageId=
-      "IMG-" +
-      Date.now() +
-      "-" +
-      Math.random().toString(36).substring(2,8);
+  const file =
+    event.target.files[0];
 
 
-    /* عرض الصورة */
-
-    const preview=document.getElementById("preview");
-
-    preview.src=currentImage;
-
-    preview.style.display="block";
+  if(!file){
+    return;
+  }
 
 
-    /* إنشاء QR */
+  if(
+    !file.type.startsWith("image/")
+  ){
 
-    const qrBox=document.getElementById("qrBox");
+    alert("اختر صورة فقط.");
 
-    qrBox.innerHTML="";
+    return;
 
-    new QRCode(qrBox,{
-
-      text:currentImageId,
-
-      width:256,
-
-      height:256,
-
-      correctLevel:QRCode.CorrectLevel.H
-
-    });
-
-    qrBox.style.display="block";
+  }
 
 
-    document.getElementById("qrInfo").style.display="block";
-
-    document.getElementById("qrInfo").innerHTML=
-      "رمز الصورة:<br><strong>"+
-      currentImageId+
-      "</strong><br><br>"+
-      "كلمة فتح الصورة: 9000";
+  const reader =
+    new FileReader();
 
 
-    document.getElementById("saveQR").style.display="block";
+  reader.onload =
+    function(e){
+
+      currentImage =
+        e.target.result;
 
 
-    /* حفظ الصورة محلياً */
+      currentImageId =
+        "IMG-" +
+        Date.now() +
+        "-" +
+        Math.random()
+          .toString(36)
+          .substring(2,8)
+          .toUpperCase();
 
-    const images=
-      JSON.parse(
-        localStorage.getItem("myImages") || "[]"
+
+      /* عرض الصورة */
+
+      const preview =
+        document.getElementById(
+          "preview"
+        );
+
+
+      preview.src =
+        currentImage;
+
+
+      preview.style.display =
+        "block";
+
+
+      /* إنشاء QR */
+
+      const qrBox =
+        document.getElementById(
+          "qrBox"
+        );
+
+
+      qrBox.innerHTML = "";
+
+      qrBox.style.display =
+        "block";
+
+
+      if(
+        typeof QRCode ===
+        "undefined"
+      ){
+
+        qrBox.innerHTML =
+          "<p style='color:#111'>تعذر تحميل مكتبة QR. تأكد من اتصال الإنترنت.</p>";
+
+        return;
+
+      }
+
+
+      new QRCode(
+        qrBox,
+        {
+          text:currentImageId,
+
+          width:280,
+
+          height:280,
+
+          correctLevel:
+            QRCode.CorrectLevel.M
+        }
       );
 
 
-    images.push({
+      /* معلومات QR */
 
-      id:currentImageId,
+      const info =
+        document.getElementById(
+          "qrInfo"
+        );
 
-      image:currentImage,
 
-      created:new Date().toLocaleString("ar-IQ"),
+      info.style.display =
+        "block";
 
-      password:"9000"
 
-    });
+      info.innerHTML =
+        "رمز الصورة:<br>" +
 
+        "<strong>" +
 
-    localStorage.setItem(
-      "myImages",
-      JSON.stringify(images)
-    );
+        escapeHtml(
+          currentImageId
+        ) +
 
+        "</strong><br><br>" +
 
-    loadFriends();
+        "كلمة فتح الصورة: " +
 
-  };
+        "<strong>9000</strong>";
 
 
-  reader.readAsDataURL(file);
+      /* إظهار زر الحفظ */
 
-}
-
-
-/* =====================================================
-   حفظ QR
-===================================================== */
-
-function saveQR(){
-
-  const qrBox=document.getElementById("qrBox");
-
-  const canvas=qrBox.querySelector("canvas");
-
-  const image=qrBox.querySelector("img");
-
-
-  let url=null;
-
-
-  if(canvas){
-
-    url=canvas.toDataURL("image/png");
-
-  }else if(image){
-
-    url=image.src;
-
-  }
-
-
-  if(!url){
-
-    alert("أنشئ الباركود أولاً");
-
-    return;
-
-  }
-
-
-  const link=document.createElement("a");
-
-  link.href=url;
-
-  link.download=
-    (currentImageId || "my-barcode")+
-    ".png";
-
-  link.click();
-
-}
-
-
-/* =====================================================
-   فتح الصورة
-===================================================== */
-
-function openProtectedImage(){
-
-  const id=
-    document.getElementById("openCode")
-      .value.trim();
-
-  if(!id){
-
-    alert("أدخل رمز الصورة");
-
-    return;
-
-  }
-
-
-  const images=
-    JSON.parse(
-      localStorage.getItem("myImages") || "[]"
-    );
-
-
-  const image=
-    images.find(item=>item.id===id);
-
-
-  if(!image){
-
-    alert(
-      "الصورة غير موجودة على هذا الجهاز."
-    );
-
-    return;
-
-  }
-
-
-  currentImage=image.image;
-
-  currentImageId=image.id;
-
-
-  document.getElementById("passwordModal")
-    .style.display="flex";
-
-}
-
-
-/* =====================================================
-   التحقق من كلمة سر الصورة
-===================================================== */
-
-function checkImagePassword(){
-
-  const password=
-    document.getElementById("imagePassword")
-      .value;
-
-
-  if(password===IMAGE_PASSWORD){
-
-    closeModal();
-
-    showImage(currentImage);
-
-    document.getElementById("imagePassword")
-      .value="";
-
-  }else{
-
-    alert("كلمة السر غير صحيحة");
-
-  }
-
-}
-
-
-/* =====================================================
-   عرض الصورة
-===================================================== */
-
-function showImage(image){
-
-  const modal=document.getElementById("passwordModal");
-
-  modal.innerHTML=`
-
-    <div class="modal-box">
-
-      <h2>🖼️ الصورة</h2>
-
-      <img src="${image}">
-
-      <button
-        class="close"
-        onclick="closeModal()">
-        إغلاق
-      </button>
-
-    </div>
-
-  `;
-
-  modal.style.display="flex";
-
-}
-
-
-function closeModal(){
-
-  document.getElementById("passwordModal")
-    .style.display="none";
-
-}
-
-
-/* =====================================================
-   محفظة الأصدقاء
-===================================================== */
-
-function loadFriends(){
-
-  const list=document.getElementById("friendsList");
-
-  const images=
-    JSON.parse(
-      localStorage.getItem("myImages") || "[]"
-    );
-
-
-  if(images.length===0){
-
-    list.innerHTML=`
-
-      <div class="main-card">
-
-        <p>
-          لا توجد صور أو باركودات محفوظة حتى الآن.
-        </p>
-
-      </div>
-
-    `;
-
-    return;
-
-  }
-
-
-  list.innerHTML="";
-
-
-  images.slice().reverse().forEach(item=>{
-
-    const div=document.createElement("div");
-
-    div.className="item";
-
-
-    div.innerHTML=`
-
-      <div class="item-title">
-        🔳 ${item.id}
-      </div>
-
-      <div class="item-info">
-        تم الإنشاء: ${item.created}
-        <br>
-        محمي بكلمة سر.
-      </div>
-
-      <img src="${item.image}">
-
-      <button
-        class="action-button"
-        onclick="openSaved('${item.id}')">
-        🔐 فتح
-      </button>
-
-    
+      document.getElementById(
+        
