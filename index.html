@@ -1,1480 +1,284 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0,
-      maximum-scale=1.0,user-scalable=no">
-
-<title>تطبيقي - محفظة الصور والباركود</title>
-
-<!-- مكتبة QR -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
-<style>
-
-*{
-  box-sizing:border-box;
-  margin:0;
-  padding:0;
-  font-family:Arial,sans-serif;
-  -webkit-tap-highlight-color:transparent;
-}
-
-body{
-  min-height:100vh;
-  background:#0b0b0f;
-  color:#fff;
-}
-
-/* =====================================================
-   شاشة تسجيل الدخول
-===================================================== */
-
-#loginScreen{
-  position:fixed;
-  inset:0;
-  z-index:9999;
-
-  display:flex;
-  align-items:center;
-  justify-content:center;
-
-  padding:15px;
-
-  background:
-    radial-gradient(
-      circle at 50% 30%,
-      #25252d 0%,
-      #17171f 38%,
-      #09090d 75%,
-      #000 100%
-    );
-}
-
-.login-box{
-  width:min(92%,400px);
-
-  padding:32px 25px;
-
-  border-radius:30px;
-
-  background:rgba(255,255,255,.055);
-
-  border:1px solid rgba(255,255,255,.14);
-
-  box-shadow:
-    0 25px 80px rgba(0,0,0,.65);
-
-  text-align:center;
-
-  backdrop-filter:blur(18px);
-}
-
-/* الشعار */
-
-.logo{
-  width:78px;
-  height:78px;
-
-  margin:0 auto 22px;
-
-  border-radius:23px;
-
-  display:flex;
-  align-items:center;
-  justify-content:center;
-
-  background:#fff;
-
-  font-size:34px;
-
-  box-shadow:
-    0 10px 30px rgba(0,0,0,.25);
-}
-
-.login-box h1{
-  font-size:30px;
-  margin-bottom:10px;
-}
-
-.login-box p{
-  color:#aaa;
-  font-size:16px;
-  margin-bottom:28px;
-}
-
-
-/* =====================================================
-   مربعات كلمة السر
-===================================================== */
-
-.pin{
-  display:flex;
-
-  justify-content:center;
-
-  direction:ltr;
-
-  gap:14px;
-
-  margin-bottom:18px;
-}
-
-.pin span{
-  width:58px;
-  height:65px;
-
-  border-radius:17px;
-
-  border:2px solid #414149;
-
-  background:#0d0d12;
-
-  display:flex;
-
-  align-items:center;
-  justify-content:center;
-
-  font-size:25px;
-  font-weight:bold;
-
-  color:#fff;
-
-  transition:
-    border-color .15s,
-    box-shadow .15s,
-    transform .1s;
-}
-
-.pin span.active{
-  border-color:#fff;
-
-  box-shadow:
-    0 0 18px rgba(255,255,255,.12);
-
-  transform:scale(1.02);
-}
-
-.error{
-  min-height:20px;
-
-  color:#ff5555;
-
-  font-size:14px;
-
-  margin-bottom:10px;
-}
-
-
-/* =====================================================
-   لوحة الأرقام - نفس ترتيب الصورة
-===================================================== */
-
-.keypad{
-  display:grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap:10px;
-}
-
-.keypad button{
-  height:64px;
-
-  border:0;
-
-  border-radius:18px;
-
-  background:#1d1d26;
-
-  color:#fff;
-
-  font-size:24px;
-
-  font-weight:500;
-
-  cursor:pointer;
-
-  user-select:none;
-
-  touch-action:manipulation;
-
-  transition:
-    transform .08s,
-    background .08s;
-}
-
-.keypad button:active{
-  transform:scale(.93);
-
-  background:#30303b;
-}
-
-/* زر التأكيد */
-
-.keypad .confirm{
-  font-size:28px;
-}
-
-/* زر الحذف */
-
-.keypad .delete{
-  font-size:27px;
-}
-
-
-/* =====================================================
-   التطبيق
-===================================================== */
-
-#app{
-  display:none;
-
-  min-height:100vh;
-
-  padding:20px;
-
-  background:
-    radial-gradient(
-      circle at 50% 0%,
-      #101b2d 0%,
-      #090909 42%,
-      #000 100%
-    );
-}
-
-.app-header{
-  padding:22px;
-
-  border-radius:24px;
-
-  background:#15151d;
-
-  margin-bottom:18px;
-
-  border:1px solid rgba(255,255,255,.05);
-}
-
-.app-header h2{
-  margin-bottom:8px;
-}
-
-.app-header p{
-  color:#aaa;
-}
-
-
-/* =====================================================
-   التبويبات
-===================================================== */
-
-.tabs{
-  display:grid;
-
-  grid-template-columns:
-    repeat(3,1fr);
-
-  gap:8px;
-
-  margin-bottom:18px;
-}
-
-.tab{
-  border:0;
-
-  border-radius:15px;
-
-  padding:15px 5px;
-
-  background:#171820;
-
-  color:#aaa;
-
-  cursor:pointer;
-
-  font-size:13px;
-
-  transition:.15s;
-}
-
-.tab:active{
-  transform:scale(.96);
-}
-
-.tab.active{
-  background:#147df5;
-
-  color:white;
-
-  box-shadow:
-    0 8px 25px rgba(20,125,245,.18);
-}
-
-
-/* =====================================================
-   الصفحات
-===================================================== */
-
-.page{
-  display:none;
-}
-
-.page.active{
-  display:block;
-}
-
-
-/* =====================================================
-   البطاقات
-===================================================== */
-
-.main-card{
-  background:#15151d;
-
-  border-radius:22px;
-
-  padding:22px;
-
-  margin-bottom:15px;
-
-  text-align:center;
-
-  border:1px solid rgba(255,255,255,.05);
-}
-
-.main-card h2{
-  margin-bottom:10px;
-}
-
-.main-card p{
-  color:#aaa;
-
-  line-height:1.7;
-
-  margin-bottom:18px;
-}
-
-
-/* =====================================================
-   الزر الأزرق
-===================================================== */
-
-.blue-button{
-  width:100%;
-
-  min-height:80px;
-
-  border:0;
-
-  border-radius:20px;
-
-  background:#147df5;
-
-  color:white;
-
-  font-size:19px;
-
-  font-weight:bold;
-
-  cursor:pointer;
-
-  display:flex;
-
-  align-items:center;
-
-  justify-content:center;
-
-  box-shadow:
-    0 10px 30px rgba(20,125,245,.25);
-
-  transition:.15s;
-
-  touch-action:manipulation;
-}
-
-.blue-button:active{
-  transform:scale(.97);
-}
-
-input[type=file]{
-  display:none;
-}
-
-
-/* =====================================================
-   الصورة
-===================================================== */
-
-#preview{
-  width:100%;
-
-  max-height:350px;
-
-  object-fit:contain;
-
-  border-radius:18px;
-
-  margin-top:18px;
-
-  display:none;
-
-  background:#080808;
-}
-
-
-/* =====================================================
-   QR
-===================================================== */
-
-#qrBox{
-  margin:20px auto;
-
-  padding:14px;
-
-  width:max-content;
-
-  max-width:100%;
-
-  background:#fff;
-
-  border-radius:18px;
-
-  display:none;
-}
-
-#qrBox canvas,
-#qrBox img{
-  display:block;
-
-  max-width:100%;
-
-  height:auto;
-}
-
-.qr-info{
-  color:#aaa;
-
-  font-size:13px;
-
-  line-height:1.8;
-
-  margin:12px 0;
-}
-
-.action-button{
-  width:100%;
-
-  padding:14px;
-
-  border:0;
-
-  border-radius:14px;
-
-  background:#292934;
-
-  color:#fff;
-
-  cursor:pointer;
-
-  margin-top:8px;
-
-  font-size:15px;
-
-  touch-action:manipulation;
-}
-
-
-/* =====================================================
-   حقول الإدخال
-===================================================== */
-
-#openCode,
-.password-input{
-  width:100%;
-
-  padding:15px;
-
-  border-radius:15px;
-
-  border:1px solid #333;
-
-  background:#0d0d12;
-
-  color:white;
-
-  outline:none;
-
-  font-size:16px;
-}
-
-#openCode{
-  margin:12px 0;
-}
-
-.password-input{
-  text-align:center;
-
-  font-size:22px;
-
-  letter-spacing:5px;
-}
-
-#openCode:focus,
-.password-input:focus{
-  border-color:#147df5;
-
-  box-shadow:
-    0 0 12px rgba(20,125,245,.15);
-}
-
-
-/* =====================================================
-   المحفظة
-===================================================== */
-
-.item{
-  background:#15151d;
-
-  border-radius:20px;
-
-  padding:18px;
-
-  margin-bottom:12px;
-
-  border:1px solid rgba(255,255,255,.05);
-}
-
-.item-title{
-  font-weight:bold;
-
-  margin-bottom:7px;
-}
-
-.item-info{
-  color:#999;
-
-  font-size:13px;
-
-  line-height:1.7;
-}
-
-.item img{
-  width:100%;
-
-  max-height:220px;
-
-  object-fit:contain;
-
-  border-radius:15px;
-
-  margin-top:12px;
-
-  background:#080808;
-}
-
-
-/* =====================================================
-   الأجهزة
-===================================================== */
-
-.device{
-  background:#15151d;
-
-  border-radius:20px;
-
-  padding:18px;
-
-  margin-bottom:12px;
-
-  border:1px solid rgba(255,255,255,.05);
-}
-
-.device-row{
-  display:flex;
-
-  justify-content:space-between;
-
-  gap:10px;
-
-  align-items:center;
-}
-
-.status{
-  padding:5px 9px;
-
-  border-radius:10px;
-
-  background:#173b24;
-
-  color:#62e58b;
-
-  font-size:12px;
-}
-
-.status.blocked{
-  background:#421b1b;
-
-  color:#ff6b6b;
-}
-
-.device button{
-  margin-top:10px;
-
-  border:0;
-
-  border-radius:12px;
-
-  padding:10px 14px;
-
-  color:white;
-
-  cursor:pointer;
-
-  background:#292934;
-}
-
-.device button.block{
-  background:#b83232;
-}
-
-.device button.unblock{
-  background:#238b57;
-}
-
-
-/* =====================================================
-   النافذة
-===================================================== */
-
-.modal{
-  position:fixed;
-
-  inset:0;
-
-  background:rgba(0,0,0,.88);
-
-  z-index:8000;
-
-  display:none;
-
-  align-items:center;
-
-  justify-content:center;
-
-  padding:20px;
-}
-
-.modal-box{
-  width:min(95%,500px);
-
-  max-height:92vh;
-
-  overflow:auto;
-
-  background:#15151d;
-
-  border-radius:24px;
-
-  padding:22px;
-
-  text-align:center;
-}
-
-.modal-box img{
-  width:100%;
-
-  max-height:70vh;
-
-  object-fit:contain;
-
-  border-radius:15px;
-
-  margin-top:15px;
-}
-
-.close{
-  width:100%;
-
-  padding:12px;
-
-  margin-top:12px;
-
-  border:0;
-
-  border-radius:14px;
-
-  background:#292934;
-
-  color:white;
-
-  cursor:pointer;
-}
-
-
-/* =====================================================
-   النار
-===================================================== */
-
-#fire{
-  position:fixed;
-
-  inset:0;
-
-  background:#000;
-
-  z-index:12000;
-
-  display:none;
-
-  align-items:flex-end;
-
-  justify-content:center;
-
-  overflow:hidden;
-}
-
-.fire-title{
-  position:absolute;
-
-  top:35%;
-
-  width:100%;
-
-  text-align:center;
-
-  font-size:35px;
-
-  font-weight:bold;
-
-  text-shadow:
-    0 0 10px white,
-    0 0 25px orange,
-    0 0 45px red;
-
-  animation:fireTitle 2.5s forwards;
-}
-
-.flames{
-  display:flex;
-
-  align-items:flex-end;
-
-  gap:8px;
-
-  height:55%;
-}
-
-.flame{
-  width:45px;
-
-  height:160px;
-
-  border-radius:
-    50% 50% 35% 35%;
-
-  background:
-    radial-gradient(
-      ellipse at 50% 75%,
-      #fff 0%,
-      #ffe600 15%,
-      #ff9d00 35%,
-      #ff4500 62%,
-      transparent 75%
-    );
-
-  transform-origin:bottom;
-
-  animation:
-    flame .45s
-    infinite alternate
-    ease-in-out;
-}
-
-.flame:nth-child(2){
-  height:230px;
-  animation-delay:.1s;
-}
-
-.flame:nth-child(3){
-  height:290px;
-  animation-delay:.2s;
-}
-
-.flame:nth-child(4){
-  height:210px;
-  animation-delay:.08s;
-}
-
-.flame:nth-child(5){
-  height:250px;
-  animation-delay:.18s;
-}
-
-.flame:nth-child(6){
-  height:180px;
-  animation-delay:.3s;
-}
-
-@keyframes flame{
-
-  from{
-    transform:
-      scaleY(.85)
-      rotate(-4deg);
-  }
-
-  to{
-    transform:
-      scaleY(1.1)
-      rotate(5deg);
-  }
-}
-
-@keyframes fireTitle{
-
-  0%{
-    opacity:0;
-    transform:scale(.5);
-  }
-
-  30%{
-    opacity:1;
-    transform:scale(1.1);
-  }
-
-  100%{
-    opacity:0;
-    transform:scale(1.3);
-  }
-}
-
-
-/* =====================================================
-   القفل
-===================================================== */
-
-.logout{
-  width:100%;
-
-  margin-top:18px;
-
-  padding:14px;
-
-  border:0;
-
-  border-radius:14px;
-
-  background:#292934;
-
-  color:white;
-
-  cursor:pointer;
-}
-
-
-/* =====================================================
-   الهاتف
-===================================================== */
-
-@media(max-width:380px){
-
-  .login-box{
-    padding:25px 18px;
-  }
-
-  .pin{
-    gap:8px;
-  }
-
-  .pin span{
-    width:47px;
-    height:57px;
-  }
-
-  .keypad{
-    gap:8px;
-  }
-
-  .keypad button{
-    height:55px;
-  }
-
-}
-
-</style>
-</head>
-
-<body>
-
-
-<!-- =====================================================
-     شاشة تسجيل الدخول
-===================================================== -->
-
-<div id="loginScreen">
-
-  <div class="login-box">
-
-    <div class="logo">
-      🔐
-    </div>
-
-    <h1>
-      تطبيقي
-    </h1>
-
-    <p>
-      أدخل رمز الدخول للمتابعة
-    </p>
-
-
-    <!-- مربعات الرمز -->
-
-    <div class="pin">
-
-      <span id="p1"></span>
-      <span id="p2"></span>
-      <span id="p3"></span>
-      <span id="p4"></span>
-
-    </div>
-
-
-    <div
-      class="error"
-      id="error">
-    </div>
-
-
-    <!--
-      مهم:
-      ترتيب الأزرار مطابق للصورة والفيديو
-      3 2 1
-      6 5 4
-      9 8 7
-      ✓ 0 ⌫
-    -->
-
-    <div class="keypad">
-
-      <button type="button" data-number="3">3</button>
-      <button type="button" data-number="2">2</button>
-      <button type="button" data-number="1">1</button>
-
-      <button type="button" data-number="6">6</button>
-      <button type="button" data-number="5">5</button>
-      <button type="button" data-number="4">4</button>
-
-      <button type="button" data-number="9">9</button>
-      <button type="button" data-number="8">8</button>
-      <button type="button" data-number="7">7</button>
-
-      <button
-        type="button"
-        class="confirm"
-        id="confirmButton">
-        ✓
-      </button>
-
-      <button type="button" data-number="0">0</button>
-
-      <button
-        type="button"
-        class="delete"
-        id="deleteButton">
-        ⌫
-      </button>
-
-    </div>
-
-  </div>
-
-</div>
-
-
-<!-- =====================================================
-     تأثير النار
-===================================================== -->
-
-<div id="fire">
-
-  <div class="fire-title">
-    🔥 مرحباً بك 🔥
-  </div>
-
-  <div class="flames">
-
-    <div class="flame"></div>
-    <div class="flame"></div>
-    <div class="flame"></div>
-    <div class="flame"></div>
-    <div class="flame"></div>
-    <div class="flame"></div>
-
-  </div>
-
-</div>
-
-
-<!-- =====================================================
-     التطبيق
-===================================================== -->
-
-<div id="app">
-
-  <div class="app-header">
-
-    <h2>
-      مرحباً بك 👋
-    </h2>
-
-    <p>
-      محفظة الصور والباركود الخاصة بك
-    </p>
-
-  </div>
-
-
-  <!-- التبويبات -->
-
-  <div class="tabs">
-
-    <button
-      type="button"
-      class="tab active"
-      data-page="convert">
-      📷 الصور
-    </button>
-
-    <button
-      type="button"
-      class="tab"
-      data-page="friends">
-      👥 الأصدقاء
-    </button>
-
-    <button
-      type="button"
-      class="tab"
-      data-page="devices">
-      📱 الأجهزة
-    </button>
-
-  </div>
-
-
-  <!-- =====================================================
-       صفحة الصور
-  ===================================================== -->
-
-  <div
-    id="convert"
-    class="page active">
-
-    <div class="main-card">
-
-      <h2>
-        تحويل الصور إلى باركود
-      </h2>
-
-      <p>
-        اختر صورة من محفظتك لإنشاء QR حقيقي.
-      </p>
-
-
-      <label class="blue-button">
-
-        📷 فتح محفظة الصور
-
-        <input
-          type="file"
-          id="imageInput"
-          accept="image/*">
-
-      </label>
-
-
-      <img
-        id="preview"
-        alt="معاينة الصورة">
-
-
-      <div id="qrBox"></div>
-
-
-      <div
-        id="qrInfo"
-        class="qr-info"
-        style="display:none">
-      </div>
-
-
-      <button
-        id="saveQR"
-        type="button"
-        class="action-button"
-        style="display:none">
-
-        💾 حفظ الباركود
-
-      </button>
-
-    </div>
-
-
-    <!-- =================================================
-         فتح باركود
-    ================================================= -->
-
-    <div class="main-card">
-
-      <h2>
-        🔐 فتح باركود
-      </h2>
-
-      <p>
-        أدخل رمز الصورة المحفوظ.
-      </p>
-
-
-      <input
-        id="openCode"
-        placeholder="أدخل رمز الصورة"
-        autocomplete="off">
-
-
-      <button
-        type="button"
-        class="blue-button"
-        style="min-height:55px"
-        id="openImageButton">
-
-        فتح الصورة
-
-      </button>
-
-    </div>
-
-
-    <div class="main-card">
-
-      <button
-        type="button"
-        class="logout"
-        id="logoutButton">
-
-        🔒 قفل التطبيق
-
-      </button>
-
-    </div>
-
-  </div>
-
-
-  <!-- =====================================================
-       الأصدقاء
-  ===================================================== -->
-
-  <div
-    id="friends"
-    class="page">
-
-    <div class="main-card">
-
-      <h2>
-        👥 محفظة الأصدقاء
-      </h2>
-
-      <p>
-        الصور والباركودات المحفوظة في هذا الجهاز.
-      </p>
-
-    </div>
-
-    <div id="friendsList"></div>
-
-  </div>
-
-
-  <!-- =====================================================
-       الأجهزة
-  ===================================================== -->
-
-  <div
-    id="devices"
-    class="page">
-
-    <div class="main-card">
-
-      <h2>
-        📱 الأجهزة
-      </h2>
-
-      <p>
-        إدارة الأجهزة المسجلة في التطبيق.
-      </p>
-
-    </div>
-
-    <div id="devicesList"></div>
-
-  </div>
-
-</div>
-
-
-<!-- =====================================================
-     نافذة كلمة سر الصورة
-===================================================== -->
-
-<div
-  id="passwordModal"
-  class="modal">
-
-  <div class="modal-box">
-
-    <h2>
-      🔐 الصورة محمية
-    </h2>
-
-    <p style="color:#aaa;margin-top:10px">
-
-      أدخل كلمة السر لعرض الصورة
-
-    </p>
-
-
-    <input
-      id="imagePassword"
-      class="password-input"
-      maxlength="4"
-      inputmode="numeric"
-      autocomplete="off"
-      placeholder="••••">
-
-
-    <button
-      type="button"
-      class="blue-button"
-      id="checkPasswordButton"
-      style="margin-top:15px;min-height:55px">
-
-      فتح الصورة
-
-    </button>
-
-
-    <button
-      type="button"
-      class="close"
-      id="closeModalButton">
-
-      إلغاء
-
-    </button>
-
-  </div>
-
-</div>
-
-
 <script>
 
-/* =====================================================
-   كلمات السر
-===================================================== */
-
-/* كلمة دخول التطبيق */
 const PASSWORD = "9119";
-
-/* كلمة حماية الصور */
 const IMAGE_PASSWORD = "9000";
 
-
-/* =====================================================
-   المتغيرات
-===================================================== */
-
 let enteredPin = "";
-
 let currentImage = null;
-
 let currentImageId = null;
-
-
-/* =====================================================
-   عناصر الصفحة
-===================================================== */
-
-const loginScreen =
-  document.getElementById("loginScreen");
-
-const app =
-  document.getElementById("app");
-
-const errorBox =
-  document.getElementById("error");
-
-
-/* =====================================================
-   لوحة الأرقام
-===================================================== */
-
-/*
-  هنا تم إصلاح المشكلة.
-
-  الأزرار لا تعتمد على onclick داخل HTML.
-  يتم ربطها مباشرة بـ JavaScript.
-
-  وهذا يجعل الضغط على الأرقام يعمل
-  على الهاتف بشكل صحيح.
-*/
-
-document
-  .querySelectorAll(".keypad [data-number]")
-  .forEach(function(button){
-
-    button.addEventListener(
-      "click",
-      function(){
-
-        press(
-          button.getAttribute("data-number")
-        );
-
-      }
-    );
-
-  });
-
-
-/* =====================================================
-   زر الحذف
-===================================================== */
-
-document
-  .getElementById("deleteButton")
-  .addEventListener(
-    "click",
-    clearPin
-  );
-
-
-/* =====================================================
-   زر التأكيد
-===================================================== */
-
-document
-  .getElementById("confirmButton")
-  .addEventListener(
-    "click",
-    login
-  );
-
-
-/* =====================================================
-   إدخال الرقم
-===================================================== */
+let pendingOpenId = null;
 
 function press(number){
+  if(enteredPin.length >= 4) return;
+  enteredPin += String(number);
+  updatePin();
+  if(enteredPin.length === 4){
+    setTimeout(function(){ login(); },180);
+  }
+}
 
-  /*
-    لا يسمح بأكثر من أربعة أرقام
-  */
+function updatePin(){
+  for(let i=1;i<=4;i++){
+    const box = document.getElementById("p"+i);
+    if(i <= enteredPin.length){
+      box.textContent = "●";
+      box.classList.add("active");
+    }else{
+      box.textContent = "";
+      box.classList.remove("active");
+    }
+  }
+}
 
-  if(enteredPin.length >= 4){
+function clearPin(){
+  enteredPin = enteredPin.slice(0,-1);
+  document.getElementById("error").textContent = "";
+  updatePin();
+}
+
+function login(){
+  if(enteredPin.length !== 4) return;
+  if(enteredPin === PASSWORD){
+    document.getElementById("loginScreen").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    enteredPin = "";
+    updatePin();
+    loadFriends();
+    loadDevices();
+    showFire();
+  }else{
+    document.getElementById("error").textContent = "رمز الدخول غير صحيح";
+    enteredPin = "";
+    updatePin();
+  }
+}
+
+function showFire(){
+  const fire = document.getElementById("fire");
+  fire.style.display = "flex";
+  setTimeout(function(){ fire.style.display = "none"; },2700);
+}
+
+function showPage(page,button){
+  document.querySelectorAll(".page").forEach(function(p){ p.classList.remove("active"); });
+  document.getElementById(page).classList.add("active");
+  document.querySelectorAll(".tab").forEach(function(t){ t.classList.remove("active"); });
+  button.classList.add("active");
+}
+
+document.getElementById("imageInput").addEventListener("change", createBarcode);
+
+function escapeHtml(str){
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function createBarcode(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  if(!file.type.startsWith("image/")){
+    alert("اختر صورة فقط.");
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    currentImage = e.target.result;
+    currentImageId = "IMG-" + Date.now() + "-" +
+      Math.random().toString(36).substring(2,8).toUpperCase();
+
+    const preview = document.getElementById("preview");
+    preview.src = currentImage;
+    preview.style.display = "block";
+
+    const qrBox = document.getElementById("qrBox");
+    qrBox.innerHTML = "";
+    qrBox.style.display = "block";
+
+    if(typeof QRCode === "undefined"){
+      qrBox.innerHTML = "<p style='color:#111'>تعذر تحميل مكتبة QR. تأكد من اتصال الإنترنت.</p>";
+      return;
+    }
+
+    new QRCode(qrBox,{
+      text:currentImageId,
+      width:280,
+      height:280,
+      correctLevel:QRCode.CorrectLevel.M
+    });
+
+    const info = document.getElementById("qrInfo");
+    info.style.display = "block";
+    info.innerHTML =
+      "رمز الصورة:<br><strong>" + escapeHtml(currentImageId) +
+      "</strong><br><br>كلمة فتح الصورة: <strong>9000</strong>";
+
+    document.getElementById("saveQR").style.display = "block";
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveQR(){
+  if(!currentImage || !currentImageId){
+    alert("لا توجد صورة لحفظها.");
+    return;
+  }
+  const items = JSON.parse(localStorage.getItem("walletItems") || "[]");
+  items.push({
+    id: currentImageId,
+    image: currentImage,
+    date: new Date().toLocaleString("ar")
+  });
+  localStorage.setItem("walletItems", JSON.stringify(items));
+
+  alert("تم حفظ الباركود بنجاح.");
+
+  document.getElementById("preview").style.display = "none";
+  document.getElementById("qrBox").style.display = "none";
+  document.getElementById("qrInfo").style.display = "none";
+  document.getElementById("saveQR").style.display = "none";
+  document.getElementById("imageInput").value = "";
+
+  currentImage = null;
+  currentImageId = null;
+
+  loadFriends();
+}
+
+function loadFriends(){
+  const items = JSON.parse(localStorage.getItem("walletItems") || "[]");
+  const list = document.getElementById("friendsList");
+
+  if(items.length === 0){
+    list.innerHTML = "<div class='main-card'><p>لا توجد عناصر محفوظة بعد.</p></div>";
     return;
   }
 
+  list.innerHTML = items.map(function(item){
+    return "<div class='item'>" +
+      "<div class='item-title'>" + escapeHtml(item.id) + "</div>" +
+      "<div class='item-info'>تاريخ الحفظ: " + escapeHtml(item.date) + "</div>" +
+      "</div>";
+  }).join("");
+}
 
-  /*
-    تحويل الرقم إلى نص
-    حتى يعمل بشكل مضمون
-  */
+function openProtectedImage(){
+  const code = document.getElementById("openCode").value.trim();
+  if(!code){
+    alert("أدخل رمز الصورة.");
+    return;
+  }
+  const items = JSON.parse(localStorage.getItem("walletItems") || "[]");
+  const found = items.find(function(i){ return i.id === code; });
 
-  enteredPin += String(number);
-
-
-  updatePin();
-
-
-  /*
-    إذا أصبحت أربعة أرقام
-    يتم الدخول تلقائياً
-  */
-
-  if(enteredPin.length === 4){
-
-    setTimeout(
-      function(){
-        login();
-      },
-      180
-    );
-
+  if(!found){
+    alert("الرمز غير موجود.");
+    return;
   }
 
+  pendingOpenId = code;
+  document.getElementById("imagePassword").value = "";
+  document.getElementById("passwordModal").style.display = "flex";
 }
 
+function checkImagePassword(){
+  const pass = document.getElementById("imagePassword").value.trim();
 
-/* =====================================================
-   تحديث المربعات
-===================================================== */
-
-function updatePin(){
-
-  for(let i=1;i<=4;i++){
-
-    const box =
-      document.getElementById(
-        "p"+i
-      );
-
-
-    if(i <= enteredPin.length){
-
-      box.textContent = "●";
-
-      box.classList.add(
-        "active"
-      );
-
-    }else{
-
-      box.textContent = "";
-
-      box.classList.remove(
-        "active"
-      );
-
-    }
-
+  if(pass !== IMAGE_PASSWORD){
+    alert("كلمة السر غير صحيحة.");
+    return;
   }
 
+  const items = JSON.parse(localStorage.getItem("walletItems") || "[]");
+  const found = items.find(function(i){ return i.id === pendingOpenId; });
+
+  closeModal();
+
+  if(found){
+    const preview = document.getElementById("preview");
+    preview.src = found.image;
+    preview.style.display = "block";
+    preview.scrollIntoView({behavior:"smooth"});
+  }
 }
 
+function closeModal(){
+  document.getElementById("passwordModal").style.display = "none";
+  pendingOpenId = null;
+}
 
-/* =====================================================
-   حذف آخر رقم
-===================================================== */
+function loadDevices(){
+  let deviceId = localStorage.getItem("deviceId");
+  if(!deviceId){
+    deviceId = "DEV-" + Date.now() + "-" +
+      Math.random().toString(36).substring(2,6).toUpperCase();
+    localStorage.setItem("deviceId", deviceId);
+  }
 
-function clearPin(){
+  let devices = JSON.parse(localStorage.getItem("devices") || "[]");
+  let current = devices.find(function(d){ return d.id === deviceId; });
 
-  enteredPin =
-    enteredPin.slice(0,-1);
+  if(!current){
+    current = {
+      id: deviceId,
+      name: navigator.userAgent.substring(0,40),
+      date: new Date().toLocaleString("ar"),
+      status: "active"
+    };
+    devices.push(current);
+  }else{
+    current.date = new Date().toLocaleString("ar");
+  }
 
+  localStorage.setItem("devices", JSON.stringify(devices));
+  renderDevices();
+}
 
-  errorBox.textContent = "";
+function renderDevices(){
+  const devices = JSON.parse(localStorage.getItem("devices") || "[]");
+  const list = document.getElementById("devicesList");
 
+  if(devices.length === 0){
+    list.innerHTML = "<div class='main-card'><p>لا توجد أجهزة مسجلة.</p></div>";
+    return;
+  }
 
+  list.innerHTML = devices.map(function(d){
+    const blocked = d.status === "blocked";
+    return "<div class='device'>" +
+      "<div class='device-row'>" +
+        "<div>" +
+          "<div class='item-title'>" + escapeHtml(d.name) + "</div>" +
+          "<div class='item-info'>آخر ظهور: " + escapeHtml(d.date) + "</div>" +
+        "</div>" +
+        "<span class='status" + (blocked ? " blocked" : "") + "'>" +
+          (blocked ? "محظور" : "نشط") +
+        "</span>" +
+      "</div>" +
+      "<button class='" + (blocked ? "unblock" : "block") + "' " +
+        "onclick=\"toggleDevice('" + d.id + "')\">" +
+        (blocked ? "إلغاء الحظر" : "حظر الجهاز") +
+      "</button>" +
+    "</div>";
+  }).join("");
+}
+
+function toggleDevice(id){
+  const devices = JSON.parse(localStorage.getItem("devices") || "[]");
+  const d = devices.find(function(x){ return x.id === id; });
+  if(!d) return;
+  d.status = d.status === "blocked" ? "active" : "blocked";
+  localStorage.setItem("devices", JSON.stringify(devices));
+  renderDevices();
+}
+
+function logout(){
+  document.getElementById("app").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+  enteredPin = "";
   updatePin();
-
 }
 
-
-/* =====================================================
-   تسجيل الدخول
-==============
+</script>
+</body>
+</html>
