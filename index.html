@@ -1,1272 +1,574 @@
+===== FILE: package.json =====
+
+{
+  "name": "img2qr-secure",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "qrcode": "^1.5.3",
+    "cookie-parser": "^1.4.6",
+    "express-session": "^1.18.0",
+    "uuid": "^9.0.1"
+  }
+}
+
+===== FILE: server.js =====
+
+const express = require('express');
+const multer = require('multer');
+const QRCode = require('qrcode');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const DATA_FILE = path.join(__dirname, 'data.json');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ images: {}, devices: {} }));
+
+const VIEW_PASSWORD = '9119';
+const ADMIN_PASSWORD = '313313';
+const EXPIRY_MS = 60 * 60 * 1000;
+
+function loadData() {
+  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+}
+function saveData(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(session({
+  secret: 'change-this-secret-key',
+  resave: false,
+  saveUninitialized: true
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use((req, res, next) => {
+  let deviceId = req.cookies.deviceId;
+  const data = loadData();
+
+  if (!deviceId) {
+    deviceId = uuidv4();
+    res.cookie('deviceId', deviceId, { maxAge: 1000 * 60 * 60 * 24 * 365, httpOnly: true });
+  }
+
+  if (!data.devices[deviceId]) {
+    data.devices[deviceId] = {
+      id: deviceId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || 'unknown',
+      firstSeen: Date.now(),
+      lastSeen: Date.now(),
+      blocked: false
+    };
+  } else {
+    data.devices[deviceId].lastSeen = Date.now();
+    data.devices[deviceId].ip = req.ip;
+  }
+  saveData(data);
+
+  req.deviceId = deviceId;
+  req.isBlocked = data.devices[deviceId].blocked;
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/admin')) return next();
+  if (req.isBlocked) {
+    return res.status(403).json({ error: 'blocked' });
+  }
+  next();
+});
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: UPLOAD_DIR,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.png';
+      cb(null, uuidv4() + ext);
+    }
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+app.post('/api/upload', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'no_file' });
+
+    const id = uuidv4();
+    const now = Date.now();
+    const data = loadData();
+
+    data.images[id] = {
+      id,
+      filename: req.file.filename,
+      ownerDevice: req.deviceId,
+      createdAt: now,
+      expiresAt: now + EXPIRY_MS
+    };
+    saveData(data);
+
+    const viewUrl = `${req.protocol}://${req.get('host')}/v/${id}`;
+    const qrDataUrl = await QRCode.toDataURL(viewUrl, { width: 512, margin: 2 });
+
+    res.json({ id, qrDataUrl, viewUrl, expiresAt: data.images[id].expiresAt });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'upload_failed' });
+  }
+});
+
+app.post('/api/view/:id', (req, res) => {
+  const { password } = req.body;
+  const { id } = req.params;
+  const data = loadData();
+  const record = data.images[id];
+
+  if (!record) return res.status(404).json({ error: 'not_found' });
+
+  if (Date.now() > record.expiresAt) {
+    const filePath = path.join(UPLOAD_DIR, record.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    delete data.images[id];
+    saveData(data);
+    return res.status(410).json({ error: 'expired' });
+  }
+
+  if (password !== VIEW_PASSWORD) {
+    return res.status(401).json({ error: 'wrong_password' });
+  }
+
+  res.json({
+    imageUrl: `/api/image/${id}`,
+    expiresAt: record.expiresAt
+  });
+});
+
+app.get('/api/image/:id', (req, res) => {
+  const data = loadData();
+  const record = data.images[req.params.id];
+  if (!record || Date.now() > record.expiresAt) {
+    return res.status(404).end();
+  }
+  res.sendFile(path.join(UPLOAD_DIR, record.filename));
+});
+
+app.post('/api/admin/unlock', (req, res) => {
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'wrong_password' });
+  }
+  req.session.isAdmin = true;
+  res.json({ ok: true });
+});
+
+function requireAdmin(req, res, next) {
+  if (!req.session.isAdmin) return res.status(403).json({ error: 'not_admin' });
+  next();
+}
+
+app.get('/api/admin/devices', requireAdmin, (req, res) => {
+  const data = loadData();
+  res.json(Object.values(data.devices).sort((a, b) => b.lastSeen - a.lastSeen));
+});
+
+app.post('/api/admin/block/:deviceId', requireAdmin, (req, res) => {
+  const data = loadData();
+  if (!data.devices[req.params.deviceId]) return res.status(404).json({ error: 'not_found' });
+  data.devices[req.params.deviceId].blocked = true;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/unblock/:deviceId', requireAdmin, (req, res) => {
+  const data = loadData();
+  if (!data.devices[req.params.deviceId]) return res.status(404).json({ error: 'not_found' });
+  data.devices[req.params.deviceId].blocked = false;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+setInterval(() => {
+  const data = loadData();
+  let changed = false;
+  for (const id in data.images) {
+    if (Date.now() > data.images[id].expiresAt) {
+      const filePath = path.join(UPLOAD_DIR, data.images[id].filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      delete data.images[id];
+      changed = true;
+    }
+  }
+  if (changed) saveData(data);
+}, 5 * 60 * 1000);
+
+app.get('/v/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'view.html'));
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+===== FILE: public/index.html =====
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>QR Vault</title>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مولّد QR للصور</title>
 <style>
-*{
-  box-sizing:border-box;
-  margin:0;
-  padding:0;
-}
-
-body{
-  font-family:Arial,Tahoma,sans-serif;
-  background:#0b0d12;
-  color:#fff;
-  min-height:100vh;
-}
-
-header{
-  height:70px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  padding:0 18px;
-  background:#11141b;
-  border-bottom:1px solid #242936;
-  position:sticky;
-  top:0;
-  z-index:10;
-}
-
-.logo{
-  font-size:22px;
-  font-weight:bold;
-  letter-spacing:.5px;
-}
-
-.logo span{
-  color:#6c63ff;
-}
-
-.icon-btn{
-  width:45px;
-  height:45px;
-  border:0;
-  border-radius:14px;
-  background:#1d2230;
-  color:#fff;
-  font-size:22px;
-  cursor:pointer;
-}
-
-.container{
-  width:min(680px,94%);
-  margin:25px auto 50px;
-}
-
-.card{
-  background:#11141b;
-  border:1px solid #242936;
-  border-radius:22px;
-  padding:20px;
-  margin-bottom:18px;
-}
-
-h1{
-  font-size:25px;
-  margin-bottom:9px;
-}
-
-.subtitle{
-  color:#9ba2b1;
-  line-height:1.7;
-  margin-bottom:20px;
-}
-
-.upload{
-  border:2px dashed #353b4b;
-  border-radius:18px;
-  padding:30px 15px;
-  text-align:center;
-  cursor:pointer;
-  transition:.2s;
-}
-
-.upload:hover{
-  border-color:#6c63ff;
-  background:#151925;
-}
-
-.upload input{
-  display:none;
-}
-
-.upload-icon{
-  font-size:45px;
-  margin-bottom:10px;
-}
-
-button{
-  border:0;
-  border-radius:13px;
-  padding:13px 17px;
-  color:#fff;
-  background:#6c63ff;
-  cursor:pointer;
-  font-size:15px;
-  font-weight:bold;
-}
-
-button.secondary{
-  background:#202532;
-}
-
-button.danger{
-  background:#b83232;
-}
-
-button.success{
-  background:#16845b;
-}
-
-button:disabled{
-  opacity:.45;
-  cursor:not-allowed;
-}
-
-.preview{
-  width:100%;
-  max-height:350px;
-  object-fit:contain;
-  background:#080a0e;
-  border-radius:15px;
-  margin-top:18px;
-  display:none;
-}
-
-.row{
-  display:flex;
-  gap:10px;
-  flex-wrap:wrap;
-  margin-top:15px;
-}
-
-.info{
-  display:none;
-  background:#171b25;
-  padding:15px;
-  border-radius:15px;
-  margin-top:15px;
-  line-height:1.9;
-  color:#cbd0db;
-}
-
-#qrcode{
-  background:#fff;
-  padding:15px;
-  border-radius:15px;
-  width:max-content;
-  max-width:100%;
-  margin:20px auto;
-  display:none;
-}
-
-#qrcode img{
-  max-width:100%;
-}
-
-.timer{
-  text-align:center;
-  font-size:22px;
-  font-weight:bold;
-  color:#64d6a0;
-  margin:10px 0;
-}
-
-.modal{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,.78);
-  display:none;
-  align-items:center;
-  justify-content:center;
-  padding:20px;
-  z-index:50;
-}
-
-.modal-box{
-  width:min(550px,100%);
-  max-height:90vh;
-  overflow:auto;
-  background:#11141b;
-  border:1px solid #292f3d;
-  border-radius:22px;
-  padding:22px;
-}
-
-.modal-box h2{
-  margin-bottom:15px;
-}
-
-input[type=password],
-input[type=text]{
-  width:100%;
-  padding:14px;
-  border-radius:12px;
-  border:1px solid #353b4b;
-  background:#080a0e;
-  color:#fff;
-  outline:none;
-  margin:8px 0 12px;
-  font-size:16px;
-}
-
-.error{
-  color:#ff7777;
-  margin:8px 0;
-  display:none;
-}
-
-.device{
-  background:#191e28;
-  border-radius:15px;
-  padding:14px;
-  margin:10px 0;
-}
-
-.device small{
-  color:#9ba2b1;
-  display:block;
-  margin:5px 0;
-  word-break:break-all;
-}
-
-.badge{
-  display:inline-block;
-  padding:5px 9px;
-  border-radius:8px;
-  font-size:12px;
-  background:#16845b;
-}
-
-.badge.blocked{
-  background:#b83232;
-}
-
-.close{
-  float:left;
-  background:#242936;
-  width:38px;
-  height:38px;
-  border-radius:10px;
-}
-
-.hidden{
-  display:none!important;
-}
-
-.center{
-  text-align:center;
-}
-
-.password-screen{
-  min-height:100vh;
-  display:flex;
-  justify-content:center;
-  align-items:center;
-  padding:20px;
-}
-
-.password-card{
-  width:min(430px,100%);
-  background:#11141b;
-  border:1px solid #292f3d;
-  border-radius:24px;
-  padding:25px;
-  text-align:center;
-}
-
-.lock{
-  font-size:55px;
-  margin-bottom:15px;
-}
-
-#sharedImage{
-  width:100%;
-  max-height:70vh;
-  object-fit:contain;
-  border-radius:16px;
-  background:#080a0e;
-  margin-top:18px;
-}
-
-.expired{
-  color:#ff7272;
-  font-weight:bold;
-  margin-top:15px;
-}
+  * { box-sizing: border-box; margin:0; padding:0; font-family: Tahoma, Arial, sans-serif; }
+  body {
+    background: radial-gradient(circle at 20% 0%, #1a1a2e 0%, #0d0d17 60%);
+    min-height:100vh; color:#f2e9dc;
+    display:flex; flex-direction:column; align-items:center; padding:40px 15px;
+  }
+  h1 {
+    margin-bottom:6px; font-size:24px;
+    background: linear-gradient(90deg,#e8c37c,#f2a65a);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    font-weight:800;
+  }
+  .subtitle { font-size:13px; color:#8a8a9c; margin-bottom:25px; }
+  .card {
+    background: rgba(255,255,255,0.04);
+    border:1px solid rgba(232,195,124,0.15);
+    backdrop-filter: blur(10px);
+    border-radius:20px; padding:28px; width:100%; max-width:420px; text-align:center;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  input[type=file] { display:none; }
+  .upload-btn {
+    display:inline-block;
+    background: linear-gradient(135deg,#f2a65a,#e8c37c);
+    color:#1a1a2e; padding:14px 22px; border-radius:14px; cursor:pointer;
+    font-weight:800; margin-bottom:15px; transition: transform 0.15s;
+  }
+  .upload-btn:active { transform: scale(0.96); }
+  #preview { max-width:100%; border-radius:14px; margin:15px 0; display:none; border:1px solid rgba(255,255,255,0.1); }
+  button.action {
+    width:100%; padding:14px; border:none; border-radius:14px;
+    background: linear-gradient(135deg,#3a3a5c,#26263f);
+    color:#f2e9dc; font-size:16px; font-weight:800; cursor:pointer; margin-top:10px;
+    border:1px solid rgba(232,195,124,0.25);
+    transition: opacity 0.2s;
+  }
+  button.action:disabled { opacity:0.4; }
+  #qrResult { margin-top:22px; display:none; }
+  #qrResult img {
+    width:220px; height:220px; background:#fff; border-radius:14px; padding:10px;
+    box-shadow: 0 6px 20px rgba(242,166,90,0.25);
+  }
+  .link-box {
+    word-break:break-all; background:rgba(0,0,0,0.35);
+    border:1px solid rgba(255,255,255,0.08);
+    padding:12px; border-radius:10px; margin-top:12px; font-size:12px; color:#c9c9d8;
+  }
+  .note { font-size:12px; color:#e8c37c; margin-top:12px; }
+  .settings-link {
+    position:fixed; top:16px; left:16px;
+    background: rgba(255,255,255,0.05);
+    border:1px solid rgba(232,195,124,0.2);
+    border-radius:12px; padding:8px 14px; text-decoration:none; color:#e8c37c; font-size:13px;
+  }
 </style>
 </head>
-
 <body>
+  <a href="/admin.html" class="settings-link">⚙ الإعدادات</a>
+  <h1>مولّد QR للصور</h1>
+  <div class="subtitle">حوّل أي صورة إلى رمز QR آمن ومؤقت</div>
+  <div class="card">
+    <label class="upload-btn" for="fileInput">📷 اختر صورة</label>
+    <input type="file" id="fileInput" accept="image/*">
+    <img id="preview">
+    <button class="action" id="genBtn" disabled>توليد الباركود</button>
 
-<header>
-  <div class="logo">QR <span>VAULT</span></div>
-  <button class="icon-btn" onclick="openSettings()">⚙️</button>
-</header>
-
-<main class="container">
-
-  <section class="card">
-    <h1>حوّل صورتك إلى QR</h1>
-
-    <p class="subtitle">
-      اختر صورة وسيتم إنشاء رمز QR خاص بها.
-      صلاحية الرمز في هذه النسخة التجريبية ساعة واحدة.
-    </p>
-
-    <label class="upload">
-      <input id="imageInput" type="file" accept="image/*">
-      <div class="upload-icon">🖼️</div>
-      <strong>اضغط لاختيار صورة</strong>
-      <p style="color:#9ba2b1;margin-top:8px">
-        PNG / JPG / WEBP
-      </p>
-    </label>
-
-    <img id="preview" class="preview">
-
-    <div class="row">
-      <button id="generateBtn" disabled onclick="generateQR()">
-        إنشاء QR
-      </button>
-
-      <button class="secondary" onclick="resetApp()">
-        مسح
-      </button>
+    <div id="qrResult">
+      <img id="qrImg">
+      <div class="link-box" id="linkBox"></div>
+      <div class="note">⏳ صالح لمدة ساعة واحدة فقط، ثم يُحذف تلقائياً</div>
     </div>
-
-    <div id="info" class="info"></div>
-
-    <div id="qrcode"></div>
-
-    <div id="downloadArea" class="row center hidden">
-      <button onclick="downloadQR()">حفظ QR</button>
-    </div>
-  </section>
-
-</main>
-
-
-<!-- شاشة فتح QR -->
-<div id="viewerScreen" class="password-screen hidden">
-
-  <div class="password-card">
-
-    <div class="lock">🔐</div>
-
-    <h2>الصورة محمية</h2>
-
-    <p class="subtitle">
-      أدخل كلمة المرور لعرض الصورة.
-    </p>
-
-    <input
-      id="viewerPassword"
-      type="password"
-      placeholder="كلمة المرور"
-      inputmode="numeric"
-    >
-
-    <div id="viewerError" class="error">
-      كلمة المرور غير صحيحة.
-    </div>
-
-    <button onclick="unlockImage()" style="width:100%">
-      فتح الصورة
-    </button>
-
-    <div id="viewerResult"></div>
-
   </div>
-
-</div>
-
-
-<!-- إعدادات -->
-<div id="settingsModal" class="modal">
-
-  <div class="modal-box">
-
-    <button class="close" onclick="closeSettings()">×</button>
-
-    <h2>⚙️ الإعدادات</h2>
-
-    <div id="adminLogin">
-
-      <p class="subtitle">
-        لوحة الإدارة محمية بكلمة مرور.
-      </p>
-
-      <input
-        id="adminPassword"
-        type="password"
-        placeholder="كلمة مرور الإدارة"
-        inputmode="numeric"
-      >
-
-      <div id="adminError" class="error">
-        كلمة المرور غير صحيحة.
-      </div>
-
-      <button onclick="loginAdmin()">
-        دخول الإدارة
-      </button>
-
-    </div>
-
-
-    <div id="adminPanel" class="hidden">
-
-      <h3>إدارة الأجهزة</h3>
-
-      <p class="subtitle">
-        يمكنك حظر جهاز أو إلغاء الحظر.
-      </p>
-
-      <div id="devices"></div>
-
-      <div class="row">
-        <button class="danger" onclick="clearDevices()">
-          حذف سجل الأجهزة
-        </button>
-
-        <button class="secondary" onclick="logoutAdmin()">
-          خروج
-        </button>
-      </div>
-
-    </div>
-
-  </div>
-
-</div>
-
 
 <script>
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const genBtn = document.getElementById('genBtn');
+const qrResult = document.getElementById('qrResult');
+const qrImg = document.getElementById('qrImg');
+const linkBox = document.getElementById('linkBox');
+let selectedFile = null;
 
-/*
-====================================================
- QR VAULT
- نسخة تجريبية تعمل بملف HTML واحد
-====================================================
-*/
-
-const VIEW_PASSWORD = "9119";
-const ADMIN_PASSWORD = "313313";
-
-const QR_LIFETIME = 60 * 60 * 1000;
-
-let selectedImage = null;
-let currentQRData = null;
-
-
-/* إنشاء معرف جهاز عشوائي */
-function getDeviceId(){
-
-  let id = localStorage.getItem("qrvault_device_id");
-
-  if(!id){
-
-    id =
-      "DEV-" +
-      crypto.randomUUID();
-
-    localStorage.setItem(
-      "qrvault_device_id",
-      id
-    );
-  }
-
-  return id;
-}
-
-
-/* تسجيل الجهاز */
-function registerDevice(){
-
-  const id = getDeviceId();
-
-  let devices =
-    JSON.parse(
-      localStorage.getItem("qrvault_devices") || "[]"
-    );
-
-  let device =
-    devices.find(d => d.id === id);
-
-  if(!device){
-
-    device = {
-      id:id,
-      firstSeen:new Date().toISOString(),
-      lastSeen:new Date().toISOString(),
-      blocked:false
-    };
-
-    devices.push(device);
-
-  }else{
-
-    device.lastSeen =
-      new Date().toISOString();
-  }
-
-  localStorage.setItem(
-    "qrvault_devices",
-    JSON.stringify(devices)
-  );
-
-  return device;
-}
-
-
-/* التحقق من حظر الجهاز */
-function isDeviceBlocked(){
-
-  const id = getDeviceId();
-
-  const devices =
-    JSON.parse(
-      localStorage.getItem("qrvault_devices") || "[]"
-    );
-
-  const device =
-    devices.find(d => d.id === id);
-
-  return device && device.blocked === true;
-}
-
-
-/* تشغيل التطبيق */
-const device = registerDevice();
-
-if(isDeviceBlocked()){
-
-  document.body.innerHTML = `
-    <div class="password-screen">
-      <div class="password-card">
-        <div class="lock">⛔</div>
-        <h2>تم حظر الجهاز</h2>
-        <p class="subtitle">
-          هذا الجهاز غير مسموح له باستخدام التطبيق.
-        </p>
-      </div>
-    </div>
-  `;
-
-}
-
-
-/* اختيار الصورة */
-document
-.getElementById("imageInput")
-.addEventListener("change", function(){
-
-  const file = this.files[0];
-
-  if(!file) return;
-
-  if(!file.type.startsWith("image/")){
-
-    alert("اختر ملف صورة فقط.");
-    return;
-  }
-
-  selectedImage = file;
-
-  const reader = new FileReader();
-
-  reader.onload = function(e){
-
-    const preview =
-      document.getElementById("preview");
-
-    preview.src = e.target.result;
-    preview.style.display = "block";
-
-    document
-      .getElementById("generateBtn")
-      .disabled = false;
-  };
-
-  reader.readAsDataURL(file);
-
+fileInput.addEventListener('change', () => {
+  selectedFile = fileInput.files[0];
+  if (!selectedFile) return;
+  preview.src = URL.createObjectURL(selectedFile);
+  preview.style.display = 'block';
+  genBtn.disabled = false;
 });
 
+genBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  genBtn.disabled = true;
+  genBtn.textContent = 'جارٍ التوليد...';
 
-/*
-====================================================
- إنشاء QR
-====================================================
-*/
+  const formData = new FormData();
+  formData.append('image', selectedFile);
 
-function generateQR(){
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'فشل الرفع');
 
-  if(!selectedImage){
-
-    alert("اختر صورة أولاً.");
-    return;
+    qrImg.src = data.qrDataUrl;
+    linkBox.textContent = data.viewUrl;
+    qrResult.style.display = 'block';
+  } catch (err) {
+    alert('حدث خطأ: ' + err.message);
+  } finally {
+    genBtn.disabled = false;
+    genBtn.textContent = 'توليد الباركود';
   }
-
-  if(isDeviceBlocked()){
-
-    alert("هذا الجهاز محظور.");
-    return;
-  }
-
-  const reader = new FileReader();
-
-  reader.onload = function(e){
-
-    const imageData = e.target.result;
-
-    const token =
-      crypto.randomUUID();
-
-    const expires =
-      Date.now() + QR_LIFETIME;
-
-    /*
-      ملاحظة:
-      الصورة نفسها تُخزن محلياً في هذه النسخة.
-      QR يحمل معرفاً ووقت انتهاء.
-    */
-
-    const record = {
-
-      token:token,
-
-      image:imageData,
-
-      createdAt:Date.now(),
-
-      expiresAt:expires
-
-    };
-
-    localStorage.setItem(
-      "qr_record_" + token,
-      JSON.stringify(record)
-    );
-
-
-    /*
-      الرابط الذي يحمله QR
-    */
-
-    const url =
-      location.href.split("?")[0] +
-      "?qr=" +
-      encodeURIComponent(token);
-
-
-    currentQRData = url;
-
-
-    const qrBox =
-      document.getElementById("qrcode");
-
-    qrBox.innerHTML = "";
-
-    qrBox.style.display = "block";
-
-
-    new QRCode(qrBox,{
-
-      text:url,
-
-      width:280,
-      height:280,
-
-      correctLevel:
-        QRCode.CorrectLevel.M
-
-    });
-
-
-    document
-      .getElementById("info")
-      .style.display = "block";
-
-    document
-      .getElementById("info")
-      .innerHTML = `
-        <b>تم إنشاء QR بنجاح ✅</b><br>
-        الصلاحية: ساعة واحدة<br>
-        ينتهي: ${new Date(expires).toLocaleString()}<br>
-        معرف الرمز: ${token}
-      `;
-
-
-    document
-      .getElementById("downloadArea")
-      .classList.remove("hidden");
-
-  };
-
-  reader.readAsDataURL(selectedImage);
-
-}
-
-
-/* حفظ QR */
-function downloadQR(){
-
-  const canvas =
-    document.querySelector("#qrcode canvas");
-
-  if(!canvas){
-
-    alert("أنشئ QR أولاً.");
-    return;
-  }
-
-  const link =
-    document.createElement("a");
-
-  link.download =
-    "QR-Vault.png";
-
-  link.href =
-    canvas.toDataURL("image/png");
-
-  link.click();
-
-}
-
-
-/* إعادة ضبط */
-function resetApp(){
-
-  selectedImage = null;
-  currentQRData = null;
-
-  document
-    .getElementById("imageInput")
-    .value = "";
-
-  document
-    .getElementById("preview")
-    .style.display = "none";
-
-  document
-    .getElementById("qrcode")
-    .style.display = "none";
-
-  document
-    .getElementById("qrcode")
-    .innerHTML = "";
-
-  document
-    .getElementById("info")
-    .style.display = "none";
-
-  document
-    .getElementById("downloadArea")
-    .classList.add("hidden");
-
-  document
-    .getElementById("generateBtn")
-    .disabled = true;
-
-}
-
-
-/*
-====================================================
- فتح QR
-====================================================
-*/
-
-function checkQR(){
-
-  const params =
-    new URLSearchParams(
-      location.search
-    );
-
-  const token =
-    params.get("qr");
-
-  if(!token) return;
-
-  const record =
-    localStorage.getItem(
-      "qr_record_" + token
-    );
-
-  document
-    .querySelector("header")
-    .classList.add("hidden");
-
-  document
-    .querySelector("main")
-    .classList.add("hidden");
-
-  document
-    .getElementById("viewerScreen")
-    .classList.remove("hidden");
-
-
-  if(!record){
-
-    showViewerError(
-      "هذا الرمز غير موجود على هذا الجهاز."
-    );
-
-    return;
-  }
-
-
-  currentQRData =
-    JSON.parse(record);
-
-
-  if(Date.now() >= currentQRData.expiresAt){
-
-    showViewerError(
-      "انتهت صلاحية هذا QR بعد مرور ساعة."
-    );
-
-  }
-
-}
-
-
-/* خطأ المشاهد */
-function showViewerError(message){
-
-  document
-    .getElementById("viewerError")
-    .textContent = message;
-
-  document
-    .getElementById("viewerError")
-    .style.display = "block";
-
-}
-
-
-/* فتح الصورة */
-function unlockImage(){
-
-  const password =
-    document
-      .getElementById("viewerPassword")
-      .value;
-
-
-  if(!currentQRData){
-
-    showViewerError(
-      "QR غير صالح."
-    );
-
-    return;
-  }
-
-
-  if(Date.now() >= currentQRData.expiresAt){
-
-    showViewerError(
-      "انتهت صلاحية QR."
-    );
-
-    return;
-  }
-
-
-  if(password !== VIEW_PASSWORD){
-
-    showViewerError(
-      "كلمة المرور غير صحيحة."
-    );
-
-    return;
-  }
-
-
-  document
-    .getElementById("viewerError")
-    .style.display = "none";
-
-
-  document
-    .getElementById("viewerResult")
-    .innerHTML = `
-
-      <img
-        id="sharedImage"
-        src="${currentQRData.image}"
-      >
-
-      <div
-        class="timer"
-        id="viewerTimer">
-      </div>
-
-    `;
-
-  startViewerTimer();
-
-}
-
-
-/* عداد الصلاحية */
-function startViewerTimer(){
-
-  const timer =
-    document.getElementById(
-      "viewerTimer"
-    );
-
-  const interval =
-    setInterval(function(){
-
-      const remaining =
-        currentQRData.expiresAt -
-        Date.now();
-
-
-      if(remaining <= 0){
-
-        clearInterval(interval);
-
-        localStorage.removeItem(
-          "qr_record_" +
-          currentQRData.token
-        );
-
-        document
-          .getElementById(
-            "viewerResult"
-          )
-          .innerHTML = `
-            <div class="expired">
-              انتهت صلاحية الصورة والـQR.
-            </div>
-          `;
-
-        return;
-      }
-
-
-      const totalSeconds =
-        Math.floor(
-          remaining / 1000
-        );
-
-      const minutes =
-        Math.floor(
-          totalSeconds / 60
-        );
-
-      const seconds =
-        totalSeconds % 60;
-
-
-      timer.textContent =
-        "الوقت المتبقي: " +
-        minutes +
-        ":" +
-        String(seconds)
-          .padStart(2,"0");
-
-    },1000);
-
-}
-
-
-/*
-====================================================
- الإعدادات
-====================================================
-*/
-
-function openSettings(){
-
-  document
-    .getElementById("settingsModal")
-    .style.display = "flex";
-
-}
-
-
-function closeSettings(){
-
-  document
-    .getElementById("settingsModal")
-    .style.display = "none";
-
-}
-
-
-/* دخول الإدارة */
-function loginAdmin(){
-
-  const password =
-    document
-      .getElementById("adminPassword")
-      .value;
-
-
-  if(password !== ADMIN_PASSWORD){
-
-    document
-      .getElementById("adminError")
-      .style.display = "block";
-
-    return;
-  }
-
-
-  document
-    .getElementById("adminError")
-    .style.display = "none";
-
-
-  document
-    .getElementById("adminLogin")
-    .classList.add("hidden");
-
-  document
-    .getElementById("adminPanel")
-    .classList.remove("hidden");
-
-
-  renderDevices();
-
-}
-
-
-/* خروج الإدارة */
-function logoutAdmin(){
-
-  document
-    .getElementById("adminLogin")
-    .classList.remove("hidden");
-
-  document
-    .getElementById("adminPanel")
-    .classList.add("hidden");
-
-  document
-    .getElementById("adminPassword")
-    .value = "";
-
-}
-
-
-/* عرض الأجهزة */
-function renderDevices(){
-
-  const box =
-    document.getElementById(
-      "devices"
-    );
-
-
-  const devices =
-    JSON.parse(
-      localStorage.getItem(
-        "qrvault_devices"
-      ) || "[]"
-    );
-
-
-  if(devices.length === 0){
-
-    box.innerHTML =
-      "<p class='subtitle'>لا توجد أجهزة مسجلة.</p>";
-
-    return;
-  }
-
-
-  box.innerHTML = "";
-
-
-  devices.forEach(function(device){
-
-    const div =
-      document.createElement("div");
-
-    div.className =
-      "device";
-
-
-    const status =
-      device.blocked
-      ? `<span class="badge blocked">محظور</span>`
-      : `<span class="badge">مسموح</span>`;
-
-
-    div.innerHTML = `
-
-      <strong>الجهاز</strong>
-
-      ${status}
-
-      <small>
-        المعرف:<br>
-        ${escapeHTML(device.id)}
-      </small>
-
-      <small>
-        أول ظهور:
-        ${new Date(device.firstSeen).toLocaleString()}
-      </small>
-
-      <small>
-        آخر استخدام:
-        ${new Date(device.lastSeen).toLocaleString()}
-      </small>
-
-      <div class="row">
-
-        ${
-          device.blocked
-
-          ?
-
-          `<button
-            class="success"
-            onclick="unblockDevice('${device.id}')">
-            إلغاء الحظر
-          </button>`
-
-          :
-
-          `<button
-            class="danger"
-            onclick="blockDevice('${device.id}')">
-            حظر الجهاز
-          </button>`
-        }
-
-      </div>
-
-    `;
-
-
-    box.appendChild(div);
-
-  });
-
-}
-
-
-/* حظر */
-function blockDevice(id){
-
-  updateDeviceStatus(
-    id,
-    true
-  );
-
-}
-
-
-/* إلغاء الحظر */
-function unblockDevice(id){
-
-  updateDeviceStatus(
-    id,
-    false
-  );
-
-}
-
-
-/* تغيير الحالة */
-function updateDeviceStatus(
-  id,
-  blocked
-){
-
-  const devices =
-    JSON.parse(
-      localStorage.getItem(
-        "qrvault_devices"
-      ) || "[]"
-    );
-
-
-  const device =
-    devices.find(
-      d => d.id === id
-    );
-
-
-  if(device){
-
-    device.blocked =
-      blocked;
-
-  }
-
-
-  localStorage.setItem(
-    "qrvault_devices",
-    JSON.stringify(devices)
-  );
-
-
-  renderDevices();
-
-}
-
-
-/* حذف السجل */
-function clearDevices(){
-
-  if(
-    !confirm(
-      "هل تريد حذف جميع الأجهزة؟"
-    )
-  ) return;
-
-
-  localStorage.removeItem(
-    "qrvault_devices"
-  );
-
-
-  registerDevice();
-
-  renderDevices();
-
-}
-
-
-/* حماية النص */
-function escapeHTML(text){
-
-  return String(text)
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
-}
-
-
-/*
-====================================================
- تشغيل QR إذا كان الرابط يحتوي على ?qr=
-====================================================
-*/
-
-checkQR();
-
+});
 </script>
+</body>
+</html>
 
+===== FILE: public/view.html =====
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>عرض الصورة</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; font-family: Tahoma, Arial, sans-serif; }
+  body {
+    background: radial-gradient(circle at 20% 0%, #1a1a2e 0%, #0d0d17 60%);
+    min-height:100vh; color:#f2e9dc; display:flex; align-items:center; justify-content:center; padding:20px;
+  }
+  .card {
+    background: rgba(255,255,255,0.04);
+    border:1px solid rgba(232,195,124,0.15);
+    backdrop-filter: blur(10px);
+    border-radius:20px; padding:32px; width:100%; max-width:400px; text-align:center;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  h2 { font-size:18px; color:#e8c37c; margin-bottom:6px; }
+  .lock-icon { font-size:32px; margin-bottom:12px; }
+  input[type=password] {
+    width:100%; padding:14px; border-radius:12px; border:1px solid rgba(232,195,124,0.3);
+    background: rgba(0,0,0,0.3); color:#f2e9dc;
+    font-size:20px; text-align:center; letter-spacing:6px; margin-bottom:15px;
+  }
+  input[type=password]:focus { outline:none; border-color:#e8c37c; }
+  button {
+    width:100%; padding:14px; border:none; border-radius:12px;
+    background: linear-gradient(135deg,#f2a65a,#e8c37c);
+    color:#1a1a2e; font-size:16px; font-weight:800; cursor:pointer;
+  }
+  #resultImg { max-width:100%; border-radius:14px; margin-top:15px; display:none; border:1px solid rgba(255,255,255,0.1); }
+  #msg { margin-top:12px; font-size:13px; color:#ff8a8a; min-height:18px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="lock-icon">🔒</div>
+    <h2>أدخل كلمة السر لعرض الصورة</h2>
+    <br>
+    <input type="password" id="pw" placeholder="••••" maxlength="10">
+    <button id="submitBtn">فتح الصورة</button>
+    <div id="msg"></div>
+    <img id="resultImg">
+  </div>
+
+<script>
+const id = window.location.pathname.split('/v/')[1];
+const submitBtn = document.getElementById('submitBtn');
+const pwInput = document.getElementById('pw');
+const msg = document.getElementById('msg');
+const resultImg = document.getElementById('resultImg');
+
+submitBtn.addEventListener('click', async () => {
+  msg.textContent = '';
+  const password = pwInput.value.trim();
+  if (!password) return;
+
+  try {
+    const res = await fetch(`/api/view/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+
+    if (res.status === 401) {
+      msg.textContent = 'كلمة السر غير صحيحة';
+      return;
+    }
+    if (res.status === 410) {
+      msg.textContent = 'انتهت صلاحية هذه الصورة';
+      return;
+    }
+    if (res.status === 404) {
+      msg.textContent = 'الصورة غير موجودة';
+      return;
+    }
+    if (!res.ok) throw new Error('خطأ غير متوقع');
+
+    resultImg.src = data.imageUrl;
+    resultImg.style.display = 'block';
+    submitBtn.style.display = 'none';
+    pwInput.style.display = 'none';
+  } catch (err) {
+    msg.textContent = 'حدث خطأ، حاول مجدداً';
+  }
+});
+
+pwInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitBtn.click();
+});
+</script>
+</body>
+</html>
+
+===== FILE: public/admin.html =====
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة الإعدادات</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; font-family: Tahoma, Arial, sans-serif; }
+  body {
+    background: radial-gradient(circle at 20% 0%, #1a1a2e 0%, #0d0d17 60%);
+    min-height:100vh; color:#f2e9dc; padding:20px;
+  }
+  .lock-card {
+    max-width:360px; margin:80px auto;
+    background: rgba(255,255,255,0.04);
+    border:1px solid rgba(232,195,124,0.15);
+    backdrop-filter: blur(10px);
+    border-radius:20px; padding:32px; text-align:center;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  input[type=password] {
+    width:100%; padding:14px; border-radius:12px; border:1px solid rgba(232,195,124,0.3);
+    background: rgba(0,0,0,0.3); color:#f2e9dc;
+    font-size:20px; text-align:center; letter-spacing:6px; margin-bottom:15px;
+  }
+  input[type=password]:focus { outline:none; border-color:#e8c37c; }
+  button {
+    padding:12px 20px; border:none; border-radius:12px;
+    background: linear-gradient(135deg,#f2a65a,#e8c37c);
+    color:#1a1a2e; font-weight:800; cursor:pointer;
+  }
+  #panel { display:none; max-width:750px; margin:0 auto; }
+  h2 { color:#e8c37c; margin-bottom:20px; text-align:center; }
+  table {
+    width:100%; border-collapse:collapse; margin-top:20px;
+    background: rgba(255,255,255,0.03); border-radius:14px; overflow:hidden;
+    border:1px solid rgba(232,195,124,0.12);
+  }
+  th, td { padding:12px 10px; text-align:right; font-size:13px; border-bottom:1px solid rgba(255,255,255,0.06); }
+  th { background: rgba(232,195,124,0.08); color:#e8c37c; }
+  .badge { padding:4px 10px; border-radius:8px; font-size:12px; font-weight:700; }
+  .blocked { background:#5c1e1e; color:#ff9a9a; }
+  .active { background:#1e5c37; color:#8dffb0; }
+  .btn-sm { padding:7px 12px; font-size:12px; border-radius:8px; cursor:pointer; border:none; font-weight:700; }
+  .btn-block { background:#8b1e1e; color:#fff; }
+  .btn-unblock { background:#1e8b4a; color:#fff; }
+  #msg { color:#ff8a8a; margin-top:10px; font-size:13px; }
+</style>
+</head>
+<body>
+  <div class="lock-card" id="lockCard">
+    <div style="font-size:32px; margin-bottom:10px;">🛡️</div>
+    <h3 style="color:#e8c37c;">أدخل كلمة سر الإعدادات</h3>
+    <br>
+    <input type="password" id="adminPw" maxlength="10">
+    <button id="unlockBtn">دخول</button>
+    <div id="msg"></div>
+  </div>
+
+  <div id="panel">
+    <h2>🗂️ إدارة الأجهزة</h2>
+    <table>
+      <thead>
+        <tr><th>الجهاز</th><th>IP</th><th>آخر ظهور</th><th>الحالة</th><th>إجراء</th></tr>
+      </thead>
+      <tbody id="deviceRows"></tbody>
+    </table>
+  </div>
+
+<script>
+const lockCard = document.getElementById('lockCard');
+const panel = document.getElementById('panel');
+const adminPw = document.getElementById('adminPw');
+const unlockBtn = document.getElementById('unlockBtn');
+const msg = document.getElementById('msg');
+const deviceRows = document.getElementById('deviceRows');
+
+unlockBtn.addEventListener('click', async () => {
+  const password = adminPw.value.trim();
+  const res = await fetch('/api/admin/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  if (res.ok) {
+    lockCard.style.display = 'none';
+    panel.style.display = 'block';
+    loadDevices();
+  } else {
+    msg.textContent = 'كلمة السر غير صحيحة';
+  }
+});
+
+adminPw.addEventListener('keydown', e => { if (e.key === 'Enter') unlockBtn.click(); });
+
+async function loadDevices() {
+  const res = await fetch('/api/admin/devices');
+  const devices = await res.json();
+  deviceRows.innerHTML = '';
+  devices.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.id.slice(0,8)}...</td>
+      <td>${d.ip}</td>
+      <td>${new Date(d.lastSeen).toLocaleString('ar')}</td>
+      <td><span class="badge ${d.blocked ? 'blocked' : 'active'}">${d.blocked ? 'محظور' : 'نشط'}</span></td>
+      <td>
+        ${d.blocked
+          ? `<button class="btn-sm btn-unblock" onclick="toggleBlock('${d.id}', false)">إلغاء الحظر</button>`
+          : `<button class="btn-sm btn-block" onclick="toggleBlock('${d.id}', true)">حظر</button>`}
+      </td>
+    `;
+    deviceRows.appendChild(tr);
+  });
+}
+
+async function toggleBlock(deviceId, block) {
+  const url = block ? `/api/admin/block/${deviceId}` : `/api/admin/unblock/${deviceId}`;
+  await fetch(url, { method: 'POST' });
+  loadDevices();
+}
+</script>
 </body>
 </html>
