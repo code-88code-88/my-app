@@ -1,1 +1,488 @@
-print("I encountered a problem with the app")
+===== FILE: package.json =====
+
+{
+  "name": "img2qr-secure",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "qrcode": "^1.5.3",
+    "cookie-parser": "^1.4.6",
+    "express-session": "^1.18.0",
+    "uuid": "^9.0.1"
+  }
+}
+
+===== FILE: server.js =====
+
+const express = require('express');
+const multer = require('multer');
+const QRCode = require('qrcode');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+const UPLOAD_DIR = path.join(__dirname, 'uploads');
+const DATA_FILE = path.join(__dirname, 'data.json');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR);
+if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify({ images: {}, devices: {} }));
+
+const VIEW_PASSWORD = '9119';
+const ADMIN_PASSWORD = '313313';
+const EXPIRY_MS = 60 * 60 * 1000;
+
+function loadData() {
+  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+}
+function saveData(data) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(session({
+  secret: 'change-this-secret-key',
+  resave: false,
+  saveUninitialized: true
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use((req, res, next) => {
+  let deviceId = req.cookies.deviceId;
+  const data = loadData();
+
+  if (!deviceId) {
+    deviceId = uuidv4();
+    res.cookie('deviceId', deviceId, { maxAge: 1000 * 60 * 60 * 24 * 365, httpOnly: true });
+  }
+
+  if (!data.devices[deviceId]) {
+    data.devices[deviceId] = {
+      id: deviceId,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'] || 'unknown',
+      firstSeen: Date.now(),
+      lastSeen: Date.now(),
+      blocked: false
+    };
+  } else {
+    data.devices[deviceId].lastSeen = Date.now();
+    data.devices[deviceId].ip = req.ip;
+  }
+  saveData(data);
+
+  req.deviceId = deviceId;
+  req.isBlocked = data.devices[deviceId].blocked;
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/admin')) return next();
+  if (req.isBlocked) {
+    return res.status(403).json({ error: 'blocked' });
+  }
+  next();
+});
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: UPLOAD_DIR,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || '.png';
+      cb(null, uuidv4() + ext);
+    }
+  }),
+  limits: { fileSize: 25 * 1024 * 1024 }
+});
+
+app.post('/api/upload', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'no_file' });
+
+    const id = uuidv4();
+    const now = Date.now();
+    const data = loadData();
+
+    data.images[id] = {
+      id,
+      filename: req.file.filename,
+      ownerDevice: req.deviceId,
+      createdAt: now,
+      expiresAt: now + EXPIRY_MS
+    };
+    saveData(data);
+
+    const viewUrl = `${req.protocol}://${req.get('host')}/v/${id}`;
+    const qrDataUrl = await QRCode.toDataURL(viewUrl, { width: 512, margin: 2 });
+
+    res.json({ id, qrDataUrl, viewUrl, expiresAt: data.images[id].expiresAt });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'upload_failed' });
+  }
+});
+
+app.post('/api/view/:id', (req, res) => {
+  const { password } = req.body;
+  const { id } = req.params;
+  const data = loadData();
+  const record = data.images[id];
+
+  if (!record) return res.status(404).json({ error: 'not_found' });
+
+  if (Date.now() > record.expiresAt) {
+    const filePath = path.join(UPLOAD_DIR, record.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    delete data.images[id];
+    saveData(data);
+    return res.status(410).json({ error: 'expired' });
+  }
+
+  if (password !== VIEW_PASSWORD) {
+    return res.status(401).json({ error: 'wrong_password' });
+  }
+
+  res.json({
+    imageUrl: `/api/image/${id}`,
+    expiresAt: record.expiresAt
+  });
+});
+
+app.get('/api/image/:id', (req, res) => {
+  const data = loadData();
+  const record = data.images[req.params.id];
+  if (!record || Date.now() > record.expiresAt) {
+    return res.status(404).end();
+  }
+  res.sendFile(path.join(UPLOAD_DIR, record.filename));
+});
+
+app.post('/api/admin/unlock', (req, res) => {
+  const { password } = req.body;
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'wrong_password' });
+  }
+  req.session.isAdmin = true;
+  res.json({ ok: true });
+});
+
+function requireAdmin(req, res, next) {
+  if (!req.session.isAdmin) return res.status(403).json({ error: 'not_admin' });
+  next();
+}
+
+app.get('/api/admin/devices', requireAdmin, (req, res) => {
+  const data = loadData();
+  res.json(Object.values(data.devices).sort((a, b) => b.lastSeen - a.lastSeen));
+});
+
+app.post('/api/admin/block/:deviceId', requireAdmin, (req, res) => {
+  const data = loadData();
+  if (!data.devices[req.params.deviceId]) return res.status(404).json({ error: 'not_found' });
+  data.devices[req.params.deviceId].blocked = true;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+app.post('/api/admin/unblock/:deviceId', requireAdmin, (req, res) => {
+  const data = loadData();
+  if (!data.devices[req.params.deviceId]) return res.status(404).json({ error: 'not_found' });
+  data.devices[req.params.deviceId].blocked = false;
+  saveData(data);
+  res.json({ ok: true });
+});
+
+setInterval(() => {
+  const data = loadData();
+  let changed = false;
+  for (const id in data.images) {
+    if (Date.now() > data.images[id].expiresAt) {
+      const filePath = path.join(UPLOAD_DIR, data.images[id].filename);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      delete data.images[id];
+      changed = true;
+    }
+  }
+  if (changed) saveData(data);
+}, 5 * 60 * 1000);
+
+app.get('/v/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'view.html'));
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+===== FILE: public/index.html =====
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تحويل صورة إلى QR</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; font-family: Tahoma, Arial, sans-serif; }
+  body { background: linear-gradient(135deg,#0f0c29,#302b63,#24243e); min-height:100vh; color:#fff; display:flex; flex-direction:column; align-items:center; padding:30px 15px; }
+  h1 { margin-bottom:20px; font-size:22px; }
+  .card { background:rgba(255,255,255,0.06); border-radius:16px; padding:25px; width:100%; max-width:420px; text-align:center; }
+  input[type=file] { display:none; }
+  .upload-btn { display:inline-block; background:linear-gradient(135deg,#667eea,#764ba2); padding:14px 20px; border-radius:12px; cursor:pointer; font-weight:bold; margin-bottom:15px; }
+  #preview { max-width:100%; border-radius:12px; margin:15px 0; display:none; }
+  button.action { width:100%; padding:14px; border:none; border-radius:12px; background:#764ba2; color:#fff; font-size:16px; font-weight:bold; cursor:pointer; margin-top:10px; }
+  button.action:disabled { opacity:0.5; }
+  #qrResult { margin-top:20px; display:none; }
+  #qrResult img { width:220px; height:220px; background:#fff; border-radius:12px; padding:10px; }
+  .link-box { word-break:break-all; background:rgba(0,0,0,0.3); padding:10px; border-radius:8px; margin-top:10px; font-size:13px; }
+  .note { font-size:12px; opacity:0.7; margin-top:10px; }
+  .settings-link { position:fixed; top:15px; left:15px; background:rgba(255,255,255,0.1); border-radius:10px; padding:8px 12px; text-decoration:none; color:#fff; font-size:13px; }
+</style>
+</head>
+<body>
+  <a href="/admin.html" class="settings-link">⚙ الإعدادات</a>
+  <h1>حوّل صورتك إلى QR Code</h1>
+  <div class="card">
+    <label class="upload-btn" for="fileInput">اختر صورة</label>
+    <input type="file" id="fileInput" accept="image/*">
+    <img id="preview">
+    <button class="action" id="genBtn" disabled>توليد QR</button>
+
+    <div id="qrResult">
+      <img id="qrImg">
+      <div class="link-box" id="linkBox"></div>
+      <div class="note">صالح لمدة ساعة واحدة فقط من الآن، ثم يُحذف تلقائياً.</div>
+    </div>
+  </div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const genBtn = document.getElementById('genBtn');
+const qrResult = document.getElementById('qrResult');
+const qrImg = document.getElementById('qrImg');
+const linkBox = document.getElementById('linkBox');
+let selectedFile = null;
+
+fileInput.addEventListener('change', () => {
+  selectedFile = fileInput.files[0];
+  if (!selectedFile) return;
+  preview.src = URL.createObjectURL(selectedFile);
+  preview.style.display = 'block';
+  genBtn.disabled = false;
+});
+
+genBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  genBtn.disabled = true;
+  genBtn.textContent = 'جارٍ التوليد...';
+
+  const formData = new FormData();
+  formData.append('image', selectedFile);
+
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'فشل الرفع');
+
+    qrImg.src = data.qrDataUrl;
+    linkBox.textContent = data.viewUrl;
+    qrResult.style.display = 'block';
+  } catch (err) {
+    alert('حدث خطأ: ' + err.message);
+  } finally {
+    genBtn.disabled = false;
+    genBtn.textContent = 'توليد QR';
+  }
+});
+</script>
+</body>
+</html>
+
+===== FILE: public/view.html =====
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>عرض الصورة</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; font-family: Tahoma, Arial, sans-serif; }
+  body { background: linear-gradient(135deg,#0f0c29,#302b63,#24243e); min-height:100vh; color:#fff; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { background:rgba(255,255,255,0.06); border-radius:16px; padding:30px; width:100%; max-width:400px; text-align:center; }
+  input[type=password] { width:100%; padding:14px; border-radius:10px; border:none; font-size:18px; text-align:center; letter-spacing:4px; margin-bottom:15px; }
+  button { width:100%; padding:14px; border:none; border-radius:12px; background:#764ba2; color:#fff; font-size:16px; font-weight:bold; cursor:pointer; }
+  #resultImg { max-width:100%; border-radius:12px; margin-top:15px; display:none; }
+  #msg { margin-top:12px; font-size:14px; color:#ff8a8a; min-height:18px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>أدخل كلمة السر لعرض الصورة</h2>
+    <br>
+    <input type="password" id="pw" placeholder="••••" maxlength="10">
+    <button id="submitBtn">فتح</button>
+    <div id="msg"></div>
+    <img id="resultImg">
+  </div>
+
+<script>
+const id = window.location.pathname.split('/v/')[1];
+const submitBtn = document.getElementById('submitBtn');
+const pwInput = document.getElementById('pw');
+const msg = document.getElementById('msg');
+const resultImg = document.getElementById('resultImg');
+
+submitBtn.addEventListener('click', async () => {
+  msg.textContent = '';
+  const password = pwInput.value.trim();
+  if (!password) return;
+
+  try {
+    const res = await fetch(`/api/view/${id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+
+    if (res.status === 401) {
+      msg.textContent = 'كلمة السر غير صحيحة';
+      return;
+    }
+    if (res.status === 410) {
+      msg.textContent = 'انتهت صلاحية هذه الصورة';
+      return;
+    }
+    if (res.status === 404) {
+      msg.textContent = 'الصورة غير موجودة';
+      return;
+    }
+    if (!res.ok) throw new Error('خطأ غير متوقع');
+
+    resultImg.src = data.imageUrl;
+    resultImg.style.display = 'block';
+    submitBtn.style.display = 'none';
+    pwInput.style.display = 'none';
+  } catch (err) {
+    msg.textContent = 'حدث خطأ، حاول مجدداً';
+  }
+});
+
+pwInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitBtn.click();
+});
+</script>
+</body>
+</html>
+
+===== FILE: public/admin.html =====
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>لوحة الإعدادات</title>
+<style>
+  * { box-sizing: border-box; margin:0; padding:0; font-family: Tahoma, Arial, sans-serif; }
+  body { background: linear-gradient(135deg,#0f0c29,#302b63,#24243e); min-height:100vh; color:#fff; padding:20px; }
+  .lock-card { max-width:360px; margin:80px auto; background:rgba(255,255,255,0.06); border-radius:16px; padding:30px; text-align:center; }
+  input[type=password] { width:100%; padding:14px; border-radius:10px; border:none; font-size:18px; text-align:center; letter-spacing:4px; margin-bottom:15px; }
+  button { padding:12px 18px; border:none; border-radius:10px; background:#764ba2; color:#fff; font-weight:bold; cursor:pointer; }
+  #panel { display:none; max-width:700px; margin:0 auto; }
+  table { width:100%; border-collapse:collapse; margin-top:20px; background:rgba(255,255,255,0.05); border-radius:10px; overflow:hidden; }
+  th, td { padding:10px; text-align:right; font-size:13px; border-bottom:1px solid rgba(255,255,255,0.1); }
+  th { background:rgba(255,255,255,0.08); }
+  .badge { padding:4px 8px; border-radius:6px; font-size:12px; }
+  .blocked { background:#8b1e1e; }
+  .active { background:#1e8b4a; }
+  .btn-sm { padding:6px 10px; font-size:12px; border-radius:6px; cursor:pointer; border:none; }
+  .btn-block { background:#8b1e1e; color:#fff; }
+  .btn-unblock { background:#1e8b4a; color:#fff; }
+  #msg { color:#ff8a8a; margin-top:10px; font-size:13px; }
+  h2 { margin-bottom:20px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="lock-card" id="lockCard">
+    <h3>أدخل كلمة سر الإعدادات</h3>
+    <br>
+    <input type="password" id="adminPw" maxlength="10">
+    <button id="unlockBtn">دخول</button>
+    <div id="msg"></div>
+  </div>
+
+  <div id="panel">
+    <h2>إدارة الأجهزة</h2>
+    <table>
+      <thead>
+        <tr><th>الجهاز</th><th>IP</th><th>آخر ظهور</th><th>الحالة</th><th>إجراء</th></tr>
+      </thead>
+      <tbody id="deviceRows"></tbody>
+    </table>
+  </div>
+
+<script>
+const lockCard = document.getElementById('lockCard');
+const panel = document.getElementById('panel');
+const adminPw = document.getElementById('adminPw');
+const unlockBtn = document.getElementById('unlockBtn');
+const msg = document.getElementById('msg');
+const deviceRows = document.getElementById('deviceRows');
+
+unlockBtn.addEventListener('click', async () => {
+  const password = adminPw.value.trim();
+  const res = await fetch('/api/admin/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  if (res.ok) {
+    lockCard.style.display = 'none';
+    panel.style.display = 'block';
+    loadDevices();
+  } else {
+    msg.textContent = 'كلمة السر غير صحيحة';
+  }
+});
+
+adminPw.addEventListener('keydown', e => { if (e.key === 'Enter') unlockBtn.click(); });
+
+async function loadDevices() {
+  const res = await fetch('/api/admin/devices');
+  const devices = await res.json();
+  deviceRows.innerHTML = '';
+  devices.forEach(d => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${d.id.slice(0,8)}...</td>
+      <td>${d.ip}</td>
+      <td>${new Date(d.lastSeen).toLocaleString('ar')}</td>
+      <td><span class="badge ${d.blocked ? 'blocked' : 'active'}">${d.blocked ? 'محظور' : 'نشط'}</span></td>
+      <td>
+        ${d.blocked
+          ? `<button class="btn-sm btn-unblock" onclick="toggleBlock('${d.id}', false)">إلغاء الحظر</button>`
+          : `<button class="btn-sm btn-block" onclick="toggleBlock('${d.id}', true)">حظر</button>`}
+      </td>
+    `;
+    deviceRows.appendChild(tr);
+  });
+}
+
+async function toggleBlock(deviceId, block) {
+  const url = block ? `/api/admin/block/${deviceId}` : `/api/admin/unblock/${deviceId}`;
+  await fetch(url, { method: 'POST' });
+  loadDevices();
+}
+</script>
+</body>
+</html>
